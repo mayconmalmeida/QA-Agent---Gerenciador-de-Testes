@@ -1,7 +1,7 @@
-package br.com.sinncosaude.pages.cadastro_de_paciente;
+package br.com.qasuite.pages.cadastro_de_paciente;
 
-import br.com.sinncosaude.config.BaseTest;
-import br.com.sinncosaude.pages.atencaoprimaria.AcolhimentoPage;
+import br.com.qasuite.config.BaseTest;
+import br.com.qasuite.pages.atencaoprimaria.AcolhimentoPage;
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import org.junit.jupiter.api.Tag;

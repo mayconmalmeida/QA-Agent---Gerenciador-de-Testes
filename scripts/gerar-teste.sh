@@ -31,4 +31,4 @@ echo "Iniciando CLI interativo..."
 echo ""
 
 # Executar o CLI
-mvn exec:java -Dexec.mainClass="br.com.sinncosaude.cli.GerarTeste" -q
+mvn exec:java -Dexec.mainClass="br.com.qasuite.cli.GerarTeste" -q

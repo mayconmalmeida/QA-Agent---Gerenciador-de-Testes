@@ -1,4 +1,4 @@
-package br.com.sinncosaude.core;
+package br.com.qasuite.core;
 
 import java.util.List;
 import java.util.Map;

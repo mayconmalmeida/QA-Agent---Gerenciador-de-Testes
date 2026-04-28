@@ -40,7 +40,7 @@ Write-Host ""
 
 # Executar o CLI
 try {
-    mvn exec:java -Dexec.mainClass="br.com.sinncosaude.cli.GerarTeste" -q
+    mvn exec:java -Dexec.mainClass="br.com.qasuite.cli.GerarTeste" -q
 } catch {
     Write-Host "✗ Erro ao executar o gerador: $_" -ForegroundColor Red
     exit 1

@@ -1,4 +1,4 @@
-package br.com.sinncosaude.config;
+package br.com.qasuite.config;
 
 import com.microsoft.playwright.*;
 

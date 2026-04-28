@@ -1,6 +1,6 @@
-package br.com.sinncosaude.core;
+package br.com.qasuite.core;
 
-import br.com.sinncosaude.config.ConfigLoader;
+import br.com.qasuite.config.ConfigLoader;
 import com.google.gson.Gson;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;

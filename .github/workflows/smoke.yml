@@ -29,8 +29,8 @@ jobs:
 
     - name: Executar testes smoke
       env:
-        SINNC_USUARIO: ${{ secrets.SINNC_USUARIO }}
-        SINNC_SENHA: ${{ secrets.SINNC_SENHA }}
+        QA_USUARIO: ${{ secrets.QA_USUARIO }}
+        QA_SENHA: ${{ secrets.QA_SENHA }}
         ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         HEADLESS: "true"
       run: mvn test -Pcucumber.filter.tags="@smoke"

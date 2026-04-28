@@ -1,7 +1,7 @@
-package br.com.sinncosaude.steps;
+package br.com.qasuite.steps;
 
-import br.com.sinncosaude.config.BaseTest;
-import br.com.sinncosaude.pages.LoginPage;
+import br.com.qasuite.config.BaseTest;
+import br.com.qasuite.pages.LoginPage;
 import io.cucumber.java.pt.*;
 import org.junit.jupiter.api.Tag;
 

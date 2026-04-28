@@ -41,4 +41,4 @@ Write-Host "[INFO] Starting Java server..."
 Write-Host "[INFO] Access: http://localhost:8080"
 Write-Host ""
 
-java -cp "target\classes;target\dependency\*" br.com.sinncosaude.server.GuiServer
+java -cp "target\classes;target\dependency\*" br.com.qasuite.server.GuiServer

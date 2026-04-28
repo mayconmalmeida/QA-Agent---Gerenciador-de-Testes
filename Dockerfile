@@ -28,4 +28,4 @@ EXPOSE 8080
 ENV JAVA_OPTS="-Xmx512m -Xms256m"
 
 # Run the application
-CMD ["sh", "-c", "java -cp target/classes:target/dependency/* br.com.sinncosaude.server.GuiServer"]
+CMD ["sh", "-c", "java -cp target/classes:target/dependency/* br.com.qasuite.server.GuiServer"]

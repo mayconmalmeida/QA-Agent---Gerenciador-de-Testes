@@ -1,4 +1,4 @@
-package br.com.sinncosaude.server;
+package br.com.qasuite.server;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;

@@ -1,7 +1,7 @@
-package br.com.sinncosaude.config;
+package br.com.qasuite.config;
 
-import br.com.sinncosaude.core.ReportBuilder;
-import br.com.sinncosaude.pages.LoginPage;
+import br.com.qasuite.core.ReportBuilder;
+import br.com.qasuite.pages.LoginPage;
 import com.microsoft.playwright.Page;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.extension.AfterEachCallback;

@@ -1,6 +1,6 @@
-package br.com.sinncosaude.pages.atencao_primaria;
+package br.com.qasuite.pages.atencao_primaria;
 
-import br.com.sinncosaude.config.BaseTest;
+import br.com.qasuite.config.BaseTest;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 

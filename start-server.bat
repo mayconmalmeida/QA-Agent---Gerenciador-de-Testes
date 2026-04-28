@@ -16,6 +16,6 @@ if %ERRORLEVEL% NEQ 0 (
 )
 
 echo Starting server...
-call mvn exec:java -Dexec.mainClass="br.com.sinncosaude.server.GuiServer"
+call mvn exec:java -Dexec.mainClass="br.com.qasuite.server.GuiServer"
 
 pause

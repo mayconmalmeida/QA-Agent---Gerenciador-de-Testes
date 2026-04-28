@@ -1,4 +1,4 @@
-package br.com.sinncosaude.pages.atencaoprimaria;
+package br.com.qasuite.pages.atencaoprimaria;
 
 import com.microsoft.playwright.Locator;
 import com.microsoft.playwright.Page;

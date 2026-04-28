@@ -1,9 +1,9 @@
-package br.com.sinncosaude.cli;
+package br.com.qasuite.cli;
 
-import br.com.sinncosaude.config.ConfigLoader;
-import br.com.sinncosaude.core.AgentIA;
-import br.com.sinncosaude.core.ArtefatosTest;
-import br.com.sinncosaude.core.DescricaoTeste;
+import br.com.qasuite.config.ConfigLoader;
+import br.com.qasuite.core.AgentIA;
+import br.com.qasuite.core.ArtefatosTest;
+import br.com.qasuite.core.DescricaoTeste;
 
 import java.io.FileWriter;
 import java.io.IOException;
