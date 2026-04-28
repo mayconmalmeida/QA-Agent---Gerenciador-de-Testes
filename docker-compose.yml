@@ -1,0 +1,19 @@
+version: '3.8'
+
+services:
+  qa-agent:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./data:/app/data
+      - ./gui:/app/gui
+    environment:
+      - JAVA_OPTS=-Xmx512m -Xms256m
+    restart: unless-stopped
+    container_name: qa-agent-server
+
+volumes:
+  data:

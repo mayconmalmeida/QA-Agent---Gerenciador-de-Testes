@@ -1,0 +1,98 @@
+# ===========================================
+# Maven
+# ===========================================
+target/
+!.mvn/wrapper/maven-wrapper.jar
+!**/src/main/**/target/
+!**/src/test/**/target/
+
+# ===========================================
+# Eclipse
+# ===========================================
+.apt_generated
+.classpath
+.factorypath
+.project
+.settings
+.springBeans
+.sts4-cache
+
+# ===========================================
+# IntelliJ IDEA
+# ===========================================
+.idea/
+*.iws
+*.iml
+*.ipr
+
+# ===========================================
+# NetBeans
+# ===========================================
+/nbproject/private/
+/nbbuild/
+/dist/
+/nbdist/
+/.nb-gradle/
+build/
+!**/src/main/**/build/
+!**/src/test/**/build/
+
+# ===========================================
+# VS Code
+# ===========================================
+.vscode/
+
+# ===========================================
+# Ambiente
+# ===========================================
+.env
+!.env.example
+
+# ===========================================
+# Sistema Operacional
+# ===========================================
+.DS_Store
+Thumbs.db
+
+# ===========================================
+# Playwright
+# ===========================================
+/playwright/.cache/
+
+# ===========================================
+# Output de testes (mantém estrutura, ignora conteúdo)
+# ===========================================
+output/screenshots/*.png
+output/reports/*.html
+output/artefatos/**/*.feature
+output/artefatos/**/*.java
+output/artefatos/**/*.txt
+
+# Mas mantém as pastas
+!output/
+!output/screenshots/
+!output/reports/
+!output/artefatos/
+!output/artefatos/smoke/
+!output/artefatos/smoke/gherkin/
+!output/artefatos/smoke/java/
+!output/artefatos/smoke/jira/
+!output/artefatos/regression/
+!output/artefatos/regression/gherkin/
+!output/artefatos/regression/java/
+!output/artefatos/regression/jira/
+!output/artefatos/critico/
+!output/artefatos/critico/gherkin/
+!output/artefatos/critico/java/
+!output/artefatos/critico/jira/
+
+# ===========================================
+# Dados locais
+# ===========================================
+data/
+
+# ===========================================
+# Logs
+# ===========================================
+*.log
+*.tmp

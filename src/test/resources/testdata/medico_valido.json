@@ -1,0 +1,14 @@
+{
+  "nome": "Dra. Ana Paula Mendes",
+  "crm": "CRM-SP 123456",
+  "especialidade": "Clínica Geral",
+  "cpf": "987.654.321-00",
+  "email": "ana.mendes@hospitalficticio.com.br",
+  "telefone": "(11) 3456-7890",
+  "celular": "(11) 99876-5432",
+  "setor": "Pronto Atendimento",
+  "subespecialidade": "Medicina de Emergência",
+  "registroANS": "123456",
+  "tipoDocumento": "CRM",
+  "ufDocumento": "SP"
+}

@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QA Agent - Gerenciador de Testes</title>
+    <link rel="icon" type="image/x-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🤖</text></svg>">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles/index.css">
+</head>
+<body>
+    <div class="app-root">
+        <!-- Sidebar -->
+        <div class="sidebar">
+            <!-- Sidebar Brand -->
+            <div class="sidebar-brand">
+                <div class="sidebar-brand-icon">QA</div>
+                <div>
+                    <div class="sidebar-brand-name">QA Agent</div>
+                    <div class="sidebar-brand-sub">Gerenciador de Testes</div>
+                </div>
+            </div>
+            
+            <!-- Main Navigation -->
+            <div class="sidebar-section">
+                <div class="sidebar-section-label">Menu Principal</div>
+                <button onclick="showDashboard()" class="nav-item active" id="nav-dashboard">
+                    <i class="fas fa-chart-line"></i>
+                    <span>Dashboard</span>
+                </button>
+                <button onclick="showTestList()" class="nav-item" id="nav-tests">
+                    <i class="fas fa-vial"></i>
+                    <span>Testes</span>
+                </button>
+                <button onclick="showExecutions()" class="nav-item" id="nav-executions">
+                    <i class="fas fa-play-circle"></i>
+                    <span>Execuções</span>
+                </button>
+            </div>
+            
+            <!-- Configuration - Collapsible -->
+            <div class="sidebar-section">
+                <div class="sidebar-module">
+                    <div class="sidebar-module-header open" onclick="toggleSection('config-section', this)">
+                        <span>Configuração</span>
+                        <i class="fas fa-chevron-down chevron"></i>
+                    </div>
+                    <div class="collapsible-content open" id="config-section">
+                        <button onclick="showMenuEditor()" class="sidebar-module-item" id="nav-menu-editor">
+                            Editor de Menus
+                        </button>
+                        <button onclick="showConfigForm()" class="sidebar-module-item" id="nav-config">
+                            Configurações
+                        </button>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Modules - Collapsible -->
+            <div class="sidebar-section" style="flex: 1;">
+                <div class="sidebar-section-label">Módulos</div>
+                <div id="modulesList">
+                    <!-- Módulos serão carregados aqui -->
+                </div>
+            </div>
+            
+            <!-- Sidebar Footer -->
+            <div class="sidebar-footer">
+                <i class="fas fa-heart" style="color: var(--red);"></i>
+                QA Agent v1.0
+            </div>
+        </div>
+        
+        <!-- Main Content -->
+        <div class="main-wrapper">
+            <!-- Header -->
+            <div class="topbar">
+                <div class="topbar-left">
+                    <div id="pageTitle" class="topbar-title">Dashboard</div>
+                    <div id="pageSubtitle" class="topbar-subtitle">Visão geral dos testes automatizados</div>
+                </div>
+                <div class="topbar-actions">
+                    <button onclick="runAllTests()" class="btn-topbar">
+                        <i class="fas fa-play"></i>
+                        Executar Todos
+                    </button>
+                    <div class="btn-divider"></div>
+                    <button onclick="showNewTestForm()" class="btn-topbar primary">
+                        <i class="fas fa-plus"></i>
+                        Novo Teste
+                    </button>
+                </div>
+            </div>
+
+            <!-- Content Area -->
+            <div class="main-content">
+                <!-- Dashboard View -->
+                <div id="dashboardView">
+                    <!-- Metric Cards Grid -->
+                    <div class="metrics-grid">
+                        <div class="metric-card blue" onclick="showAllTests()">
+                            <div class="metric-icon blue">
+                                <i class="fas fa-vial"></i>
+                            </div>
+                            <div class="metric-value" id="totalTests">0</div>
+                            <div class="metric-label">Total de Testes</div>
+                        </div>
+
+                        <div class="metric-card green" onclick="showGeneratedTests()">
+                            <div class="metric-icon green">
+                                <i class="fas fa-check"></i>
+                            </div>
+                            <div class="metric-value" id="generatedTests">0</div>
+                            <div class="metric-label">Testes Gerados</div>
+                        </div>
+
+                        <div class="metric-card amber" onclick="showDrafts()">
+                            <div class="metric-icon amber">
+                                <i class="fas fa-pen"></i>
+                            </div>
+                            <div class="metric-value" id="draftTests">0</div>
+                            <div class="metric-label">Rascunhos</div>
+                        </div>
+
+                        <div class="metric-card purple" onclick="showExecutions()">
+                            <div class="metric-icon purple">
+                                <i class="fas fa-play"></i>
+                            </div>
+                            <div class="metric-value" id="todayRuns">0</div>
+                            <div class="metric-label">Execuções Hoje</div>
+                        </div>
+                    </div>
+                    
+                    <!-- Recent Tests Section -->
+                    <div id="recentTestsList">
+                        <!-- Recent tests will be loaded here -->
+                    </div>
+                    
+                    <!-- Charts Section -->
+                    <div class="panels-grid">
+                        <div class="panel">
+                            <div class="panel-header">
+                                <div class="panel-title">Distribuição por Status</div>
+                            </div>
+                            <div class="panel-body">
+                                <div id="testDistribution">
+                                    <div class="empty-state">
+                                        <div class="empty-state-icon">
+                                            <i class="fas fa-chart-pie"></i>
+                                        </div>
+                                        <div class="empty-state-title">Sem dados para exibir</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="panel">
+                            <div class="panel-header">
+                                <div class="panel-title">Testes por Módulo</div>
+                            </div>
+                            <div class="panel-body">
+                                <div id="moduleChart">
+                                    <div class="empty-state">
+                                        <div class="empty-state-icon">
+                                            <i class="fas fa-chart-bar"></i>
+                                        </div>
+                                        <div class="empty-state-title">Sem dados para exibir</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Test List View -->
+                <div id="testListView" class="hidden">
+                    <div id="testList">
+                        <!-- Test list will be loaded here -->
+                    </div>
+                </div>
+                
+                <!-- Executions View -->
+                <div id="executionsView" class="hidden">
+                    <div class="panel">
+                        <div class="panel-header">
+                            <div class="panel-title">Histórico de Execuções</div>
+                        </div>
+                        <div class="panel-body">
+                            <div id="executionsList">
+                                <div class="empty-state">
+                                    <div class="empty-state-icon">
+                                        <i class="fas fa-play-circle"></i>
+                                    </div>
+                                    <div class="empty-state-title">Nenhuma execução registrada ainda</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- New Test Form -->
+                <div id="newTestForm" class="hidden">
+                    <div class="panel">
+                        <div class="panel-body">
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">
+                                <div class="form-group">
+                                    <label class="form-label">Módulo</label>
+                                    <select id="moduleSelect" class="input" onchange="loadMenus()">
+                                        <option value="">Selecione um módulo</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">Menu</label>
+                                    <select id="menuSelect" class="input" disabled>
+                                        <option value="">Selecione um menu</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">
+                                <div class="form-group">
+                                    <label class="form-label">Tipo de Teste</label>
+                                    <select id="testTypeSelect" class="input">
+                                        <option value="smoke">Smoke Test</option>
+                                        <option value="regression">Regressão</option>
+                                        <option value="functional">Funcional</option>
+                                        <option value="integration">Integração</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">Prioridade</label>
+                                    <select id="prioritySelect" class="input">
+                                        <option value="Baixa">Baixa</option>
+                                        <option value="Média">Média</option>
+                                        <option value="Alta">Alta</option>
+                                        <option value="Crítica">Crítica</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div class="form-group">
+                                <label class="form-label">Nome do Teste</label>
+                                <input type="text" id="testNameInput" class="input" placeholder="Digite um nome descritivo para o teste">
+                            </div>
+
+                            <div class="form-group">
+                                <label class="form-label">Descrição</label>
+                                <textarea id="testDescription" rows="4" class="input" placeholder="Descreva o objetivo e escopo do teste"></textarea>
+                            </div>
+
+                            <div class="form-group">
+                                <label class="form-label">Dados de Teste (JSON)</label>
+                                <textarea id="testData" rows="6" class="input" style="font-family: var(--mono); font-size: 12px;" placeholder='{"username": "test", "password": "test123"}'></textarea>
+                            </div>
+
+                            <div style="display: flex; gap: 12px;">
+                                <button onclick="saveTest()" class="btn-primary" style="flex: 1;">
+                                    <i class="fas fa-save"></i>
+                                    <span>Salvar Rascunho</span>
+                                </button>
+                                <button onclick="generateTest()" class="btn-run" style="flex: 1;">
+                                    <i class="fas fa-magic"></i>
+                                    <span>Gerar Teste com IA</span>
+                                </button>
+                                <button onclick="resetForm()" class="btn-secondary">
+                                    <i class="fas fa-undo"></i>
+                                    <span>Limpar</span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Generated Output -->
+                    <div id="generatedOutput" class="hidden" style="margin-top: 16px;">
+                        <div class="panel">
+                            <div class="panel-header">
+                                <h3 class="panel-title">
+                                    <i class="fas fa-code"></i>
+                                    Artefatos Gerados
+                                </h3>
+                            </div>
+                            <div class="panel-body">
+                                <div class="form-group">
+                                    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+                                        <label class="form-label">Feature File (.feature)</label>
+                                        <button onclick="copyToClipboard('featureOutput')" class="btn-secondary">
+                                            <i class="fas fa-copy"></i>
+                                            <span>Copiar</span>
+                                        </button>
+                                    </div>
+                                    <div id="featureOutput" class="input" style="font-family: var(--mono); font-size: 12px; max-height: 256px; overflow-y: auto; background: var(--bg-input); white-space: pre-wrap;"></div>
+                                </div>
+
+                                <div class="form-group">
+                                    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+                                        <label class="form-label">Test Class (.java)</label>
+                                        <button onclick="copyToClipboard('javaOutput')" class="btn-secondary">
+                                            <i class="fas fa-copy"></i>
+                                            <span>Copiar</span>
+                                        </button>
+                                    </div>
+                                    <div id="javaOutput" class="input" style="font-family: var(--mono); font-size: 12px; max-height: 256px; overflow-y: auto; background: var(--bg-input); white-space: pre-wrap;"></div>
+                                </div>
+
+                                <div style="display: flex; gap: 12px;">
+                                    <button onclick="saveGeneratedTest()" class="btn-primary" style="flex: 1;">
+                                        <i class="fas fa-save"></i>
+                                        <span>Salvar como Rascunho</span>
+                                    </button>
+                                    <button onclick="closeGeneratedOutput()" class="btn-secondary">
+                                        <i class="fas fa-times"></i>
+                                        <span>Fechar</span>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                                
+                <!-- Menu Editor View -->
+                <div id="menuEditorView" class="hidden">
+                    <div class="panel">
+                        <div class="panel-header">
+                            <h3 class="panel-title">
+                                <i class="fas fa-sitemap"></i>
+                                Editor de Estrutura de Menus
+                            </h3>
+                            <div style="display: flex; gap: 8px;">
+                                <button onclick="resetToDefault()" class="btn-secondary">
+                                    <i class="fas fa-undo"></i>
+                                    <span>Restaurar Padrão</span>
+                                </button>
+                                <button onclick="saveMenuStructure()" class="btn-run">
+                                    <i class="fas fa-save"></i>
+                                    <span>Salvar</span>
+                                </button>
+                            </div>
+                        </div>
+
+                        <div id="menuEditorContent" class="panel-body">
+                            <!-- Editor de módulos será carregado aqui -->
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Configuration View -->
+                <div id="configView" class="hidden">
+                    <div class="panel">
+                        <div class="panel-header">
+                            <h3 class="panel-title">
+                                <i class="fas fa-cog"></i>
+                                Configurações do Sistema
+                            </h3>
+                            <button onclick="saveConfig()" class="btn-run">
+                                <i class="fas fa-save"></i>
+                                <span>Salvar Configurações</span>
+                            </button>
+                        </div>
+                        <div class="panel-body">
+                        
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px;">
+                            <div>
+                                <h4 style="font-size: 14px; font-weight: 600; color: var(--text-primary); margin-bottom: 16px;">Configurações de Acesso</h4>
+                                <div class="form-group">
+                                    <label class="form-label">URL Base do Sistema</label>
+                                    <input type="url" id="baseUrl" placeholder="https://exemplo.com/sistema/login" class="input">
+                                    <p style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">URL completa de acesso ao sistema</p>
+                                </div>
+
+                                <div class="form-group">
+                                    <label class="form-label">Usuário</label>
+                                    <input type="text" id="username" placeholder="admin" class="input">
+                                </div>
+
+                                <div class="form-group">
+                                    <label class="form-label">Senha</label>
+                                    <input type="password" id="password" placeholder="****" class="input">
+                                </div>
+                            </div>
+
+                            <div>
+                                <h4 style="font-size: 14px; font-weight: 600; color: var(--text-primary); margin-bottom: 16px;">Configurações de Teste</h4>
+                                <div class="form-group">
+                                    <label class="form-label">Timeout Padrão (segundos)</label>
+                                    <input type="number" id="timeout" value="30" min="5" max="300" class="input">
+                                    <p style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">Tempo máximo de espera por elementos</p>
+                                </div>
+
+                                <div class="form-group">
+                                    <label class="form-label">Ambiente</label>
+                                    <select id="environment" class="input">
+                                        <option value="dev">Desenvolvimento</option>
+                                        <option value="test">Testes</option>
+                                        <option value="staging">Staging</option>
+                                        <option value="prod">Produção</option>
+                                    </select>
+                                </div>
+
+                                <div class="form-group">
+                                    <label class="form-label">Navegador</label>
+                                    <select id="browser" class="input">
+                                        <option value="chromium">Chromium</option>
+                                        <option value="firefox">Firefox</option>
+                                        <option value="webkit">WebKit</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div style="margin-top: 24px; padding: 16px; background: var(--amber-bg); border: 1px solid #FDE68A; border-radius: var(--radius-md);">
+                            <div style="display: flex; align-items: flex-start; gap: 8px;">
+                                <i class="fas fa-exclamation-triangle" style="color: var(--amber-text); margin-top: 2px;"></i>
+                                <div>
+                                    <p style="font-size: 12px; color: var(--amber-text);">
+                                        <strong>Atenção:</strong> As alterações aqui afetarão todos os testes.
+                                        Certifique-se de que as configurações estão corretas antes de executar os testes.
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                        </div>
+                    </div>
+                </div>
+    <!-- Loading Overlay -->
+    <div id="loadingOverlay" class="loading-overlay hidden">
+        <div class="loading-spinner"></div>
+        <span id="loadingText" style="color: var(--text-secondary); margin-top: 12px; font-size: 13px;">Carregando...</span>
+    </div>
+
+    <!-- Custom Modal -->
+    <div id="customModal" style="position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 50;" class="hidden">
+        <div style="background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 24px; max-width: 400px; width: 100%; margin: 16px; box-shadow: var(--shadow-md);">
+            <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 16px;">
+                <div id="modalIcon" style="width: 48px; height: 48px; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: var(--bg-hover); flex-shrink: 0;">
+                    <!-- Icon will be inserted here -->
+                </div>
+                <div>
+                    <h3 id="modalTitle" style="font-size: 16px; font-weight: 600; color: var(--text-primary);"></h3>
+                    <p id="modalMessage" style="font-size: 13px; color: var(--text-muted); margin-top: 4px;"></p>
+                </div>
+            </div>
+            <div style="display: flex; justify-content: flex-end; gap: 12px;">
+                <button id="modalCancel" class="btn-secondary hidden">
+                    <span>Cancelar</span>
+                </button>
+                <button id="modalConfirm" class="btn-primary">
+                    <span>OK</span>
+                </button>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
+
+<script src="app.js"></script>
