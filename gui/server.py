@@ -591,8 +591,6 @@ public class {class_name} extends BaseTest {{
 """
 
 def main():
-    os.chdir('..')  # Go to project root
-    
     # Initialize database
     print("Inicializando banco de dados...")
     init_db()
