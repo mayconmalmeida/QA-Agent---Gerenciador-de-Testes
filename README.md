@@ -2,6 +2,23 @@
 
 Framework completo de automação de testes com interface web, integrando Playwright, JUnit 5 e IA (OpenAI, Groq, Ollama, Anthropic) para geração automática de cenários de teste, código Java e integração com sistemas de gestão.
 
+## Sobre o projeto
+
+Este projeto nasceu de uma necessidade real do meu dia a dia como **Analista de Requisitos e QA**.
+
+Cansado de escrever casos de teste manualmente, criar cenários Gherkin do zero e repetir o mesmo trabalho de documentação toda vez que um novo fluxo precisava ser testado, decidi automatizar o próprio processo de criação de testes.
+
+O **QA Agent** é uma aplicação web que combina uma interface visual intuitiva com o poder de IA (Anthropic Claude) para gerar automaticamente:
+
+- Arquivos `.feature` (Gherkin/BDD) em português
+- Código Java com Playwright pronto para executar
+- Casos de teste formatados para Jira/Xray
+- Relatório HTML de execução com screenshots de falhas
+
+A ideia é simples: você descreve o fluxo em linguagem natural, o agente entende, gera todos os artefatos e ainda executa o teste no navegador real — tudo isso em minutos, não horas.
+
+> Desenvolvido por **Maycon Malicheski de Almeida** para uso próprio como Analista de Requisitos e QA.
+
 ## 📋 Pré-requisitos
 
 - **Java 17+**
