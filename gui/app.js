@@ -2176,13 +2176,33 @@ function handleDragOver(e) {
     
     e.dataTransfer.dropEffect = 'move';
     
-    const afterElement = getDragAfterElement(e.currentTarget, e.clientY);
     const dragging = document.querySelector('.dragging');
+    if (!dragging) return false;
     
-    if (afterElement == null) {
-        e.currentTarget.appendChild(dragging);
-    } else {
-        e.currentTarget.insertBefore(dragging, afterElement);
+    // Validate that we're dropping in the right container
+    const targetId = e.currentTarget.id;
+    const draggedType = dragging.dataset.type;
+    
+    // Modules can only be dropped in modulesContainer
+    if (draggedType === 'module' && targetId !== 'modulesContainer') {
+        return false;
+    }
+    
+    // Menus can only be dropped in menus-* containers
+    if (draggedType === 'menu' && !targetId.startsWith('menus-')) {
+        return false;
+    }
+    
+    // Prevent dropping an element into itself or its children
+    if (e.currentTarget.contains(dragging)) {
+        // Already in correct container, just reorder
+        const afterElement = getDragAfterElement(e.currentTarget, e.clientY);
+        
+        if (afterElement == null) {
+            e.currentTarget.appendChild(dragging);
+        } else {
+            e.currentTarget.insertBefore(dragging, afterElement);
+        }
     }
     
     return false;
