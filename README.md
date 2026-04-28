@@ -13,7 +13,7 @@ Framework completo de automação de testes com interface web, integrando Playwr
 ### 1. Clone e prepare o ambiente
 
 ```bash
-cd sinnc-qa-agent
+cd qa-agent
 ```
 
 ### 2. Configure as credenciais
@@ -82,7 +82,7 @@ O agente suporta múltiplos provedores (do mais barato/gratuito ao pago):
 
 ```powershell
 # Windows
-cd sinnc-qa-agent
+cd qa-agent
 cp .env.example .env
 # Edite .env com sua OPENAI_API_KEY (ou GROQ_API_KEY, ou configure Ollama)
 ```
@@ -189,10 +189,10 @@ O relatório abre automaticamente no navegador padrão após a execução (confi
 ## 📁 Estrutura de Pastas
 
 ```
-sinnc-qa-agent/
+qa-agent/
 ├── src/
 │   ├── test/
-│   │   ├── java/br/com/sinncosaude/
+│   │   ├── java/br/com/qasuite/
 │   │   │   ├── config/          # ConfigLoader, BrowserFactory, BaseTest
 │   │   │   ├── core/            # AgentIA, ReportBuilder, DTOs
 │   │   │   ├── pages/           # Page Objects por módulo
@@ -202,7 +202,7 @@ sinnc-qa-agent/
 │   │       ├── features/        # Arquivos .feature (smoke/regression/critico)
 │   │       ├── testdata/        # JSONs com dados de teste
 │   │       └── config.properties
-│   └── main/java/br/com/sinncosaude/cli/  # CLI GerarTeste
+│   └── main/java/br/com/qasuite/cli/  # CLI GerarTeste
 ├── output/
 │   ├── screenshots/             # Screenshots de falhas
 │   ├── reports/                 # Relatórios HTML
@@ -241,8 +241,8 @@ relatorio.abrir.apos.execucao=true
 
 | Variável | Descrição |
 |----------|-----------|
-| `SINNC_USUARIO` | Usuário do sistema Sinnc |
-| `SINNC_SENHA` | Senha do sistema Sinnc |
+| `QA_USUARIO` | Usuário do sistema |
+| `QA_SENHA` | Senha do sistema |
 | `ANTHROPIC_API_KEY` | API Key da Anthropic (Claude) |
 | `HEADLESS` | `true` para modo headless |
 
@@ -259,8 +259,8 @@ relatorio.abrir.apos.execucao=true
 - **Artifacts**: Relatório HTML e screenshots
 
 Configure os secrets em `Settings > Secrets and variables > Actions`:
-- `SINNC_USUARIO`
-- `SINNC_SENHA`
+- `QA_USUARIO`
+- `QA_SENHA`
 - `ANTHROPIC_API_KEY`
 
 ## 🏷️ Tipos de Teste
@@ -297,7 +297,7 @@ O Maven não está no PATH. Soluções:
 1. **Instale o Maven:** Baixe em [maven.apache.org](https://maven.apache.org/download.cgi) e adicione ao PATH
 2. **Ou use o wrapper:** Se o projeto tiver `mvnw`:
    ```powershell
-   .\mvnw exec:java -Dexec.mainClass="br.com.sinncosaude.cli.GerarTeste"
+   .\mvnw exec:java -Dexec.mainClass="br.com.qasuite.cli.GerarTeste"
    ```
 3. **Ou use IDE:** Execute diretamente pela IDE (IntelliJ, VS Code, Eclipse)
 

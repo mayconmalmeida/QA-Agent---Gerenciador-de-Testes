@@ -71,14 +71,14 @@ const defaultMenuStructure = {
 };
 
 // Load menu structure from localStorage or use default
-let menuStructure = JSON.parse(localStorage.getItem('sinncMenuStructure')) || defaultMenuStructure;
+let menuStructure = JSON.parse(localStorage.getItem('qaMenuStructure')) || defaultMenuStructure;
 
 // Saved tests storage
-let savedTests = JSON.parse(localStorage.getItem('sinncTests') || '[]');
+let savedTests = JSON.parse(localStorage.getItem('qaTests') || '[]');
 let editingTestId = null; // Track if we're editing a test
 
 // Current view state persistence
-const VIEW_STATE_KEY = 'sinncCurrentView';
+const VIEW_STATE_KEY = 'qaCurrentView';
 let currentViewState = {
     view: 'dashboard', // dashboard, testList, newTest, menuEditor, config
     moduleKey: null,
@@ -131,8 +131,8 @@ async function loadFromDisk(key) {
 
 // Sync localStorage to disk
 async function syncToDisk() {
-    await saveToDisk('sinncTests', JSON.stringify(savedTests));
-    await saveToDisk('sinncMenuStructure', JSON.stringify(menuStructure));
+    await saveToDisk('qaTests', JSON.stringify(savedTests));
+    await saveToDisk('qaMenuStructure', JSON.stringify(menuStructure));
     await saveToDisk('qaAgentConfig', localStorage.getItem('qaAgentConfig'));
     console.log('All data synced to disk');
 }
@@ -140,17 +140,17 @@ async function syncToDisk() {
 // Load data from disk on startup
 async function loadFromDiskOnStartup() {
     try {
-        const testsData = await loadFromDisk('sinncTests');
+        const testsData = await loadFromDisk('qaTests');
         if (testsData) {
             savedTests = JSON.parse(testsData);
-            localStorage.setItem('sinncTests', testsData);
+            localStorage.setItem('qaTests', testsData);
             console.log('Tests loaded from disk');
         }
 
-        const menuData = await loadFromDisk('sinncMenuStructure');
+        const menuData = await loadFromDisk('qaMenuStructure');
         if (menuData) {
             menuStructure = JSON.parse(menuData);
-            localStorage.setItem('sinncMenuStructure', menuData);
+            localStorage.setItem('qaMenuStructure', menuData);
             console.log('Menu structure loaded from disk');
         }
 
@@ -169,7 +169,7 @@ const originalSetItem = localStorage.setItem;
 localStorage.setItem = function(key, value) {
     originalSetItem.call(this, key, value);
     // Auto-sync important keys to disk
-    if (key === 'sinncTests' || key === 'sinncMenuStructure' || key === 'qaAgentConfig') {
+    if (key === 'qaTests' || key === 'qaMenuStructure' || key === 'qaAgentConfig') {
         saveToDisk(key, value);
     }
 };
@@ -730,7 +730,7 @@ function renderTestList(container, tests) {
 // Load modules in sidebar
 function loadModulesList() {
     // Reload menu structure from localStorage to get latest changes
-    menuStructure = JSON.parse(localStorage.getItem('sinncMenuStructure')) || defaultMenuStructure;
+    menuStructure = JSON.parse(localStorage.getItem('qaMenuStructure')) || defaultMenuStructure;
     
     console.log('Loading modules:', Object.keys(menuStructure));
     console.log('Menu structure:', menuStructure);
@@ -918,7 +918,7 @@ function deleteTest(testId) {
     }
     
     savedTests = savedTests.filter(test => test.id !== testId);
-    localStorage.setItem('sinncTests', JSON.stringify(savedTests));
+    localStorage.setItem('qaTests', JSON.stringify(savedTests));
     
     // Reload the current view
     const currentModule = document.querySelector('[onclick*="showModuleTests"]').getAttribute('onclick').match(/'([^']+)'/)[1];
@@ -953,7 +953,7 @@ function showModuleTests(moduleKey, menuKey) {
     testList.innerHTML = '';
     
     // Reload tests from localStorage to get fresh data
-    savedTests = JSON.parse(localStorage.getItem('sinncTests') || '[]');
+    savedTests = JSON.parse(localStorage.getItem('qaTests') || '[]');
     
     const filteredTests = savedTests.filter(test => test.module === moduleKey && test.menu === menuKey);
     console.log('Filtered tests for', moduleKey, menuKey, ':', filteredTests);
@@ -1167,7 +1167,7 @@ function saveTest() {
                 updatedAt: new Date().toISOString()
             };
             
-            localStorage.setItem('sinncTests', JSON.stringify(savedTests));
+            localStorage.setItem('qaTests', JSON.stringify(savedTests));
             
             showAlert('Teste atualizado com sucesso!', 'success', () => {
                 resetForm();
@@ -1192,7 +1192,7 @@ function saveTest() {
         console.log('Test object created:', test);
         
         savedTests.push(test);
-        localStorage.setItem('sinncTests', JSON.stringify(savedTests));
+        localStorage.setItem('qaTests', JSON.stringify(savedTests));
         
         console.log('Tests after save:', savedTests);
         
@@ -1286,7 +1286,7 @@ function applyGenerated() {
     };
     
     savedTests.push(test);
-    localStorage.setItem('sinncTests', JSON.stringify(savedTests));
+    localStorage.setItem('qaTests', JSON.stringify(savedTests));
     
     // This would call a backend endpoint to write files
     fetch('http://localhost:8080/api/apply-test', {
@@ -1339,7 +1339,7 @@ function saveGeneratedAsDraft() {
     };
     
     savedTests.push(test);
-    localStorage.setItem('sinncTests', JSON.stringify(savedTests));
+    localStorage.setItem('qaTests', JSON.stringify(savedTests));
     
     showAlert('Teste gerado salvo como rascunho!', 'success', () => {
         // Clear the generated output and navigate to test list
@@ -1583,7 +1583,7 @@ function deleteTest(testId) {
         () => {
             // Proceed with deletion
             savedTests = savedTests.filter(t => t.id !== testId);
-            localStorage.setItem('sinncTests', JSON.stringify(savedTests));
+            localStorage.setItem('qaTests', JSON.stringify(savedTests));
             
             // Show success message and exit to dashboard
             showAlert('Teste excluído com sucesso!', 'success', () => {
@@ -1937,7 +1937,7 @@ function addModule() {
 
 // Save menu structure
 function saveMenuStructure() {
-    localStorage.setItem('sinncMenuStructure', JSON.stringify(menuStructure));
+    localStorage.setItem('qaMenuStructure', JSON.stringify(menuStructure));
     loadModulesList();
     updateModuleSelect(); // Update the module select in new test form
     showAlert('Estrutura de menus salva com sucesso!', 'success');
@@ -1978,7 +1978,7 @@ function resetToDefault() {
         'warning',
         () => {
             menuStructure = JSON.parse(JSON.stringify(defaultMenuStructure));
-            localStorage.removeItem('sinncMenuStructure');
+            localStorage.removeItem('qaMenuStructure');
             loadModulesList();
             updateModuleSelect(); // Update the module select in new test form
             renderMenuEditor();
