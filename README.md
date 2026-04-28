@@ -44,15 +44,11 @@ Edite o arquivo `.env` e preencha (escolha um provedor):
 **Opção 1 - OpenAI (você já tem acesso):**
 ```env
 OPENAI_API_KEY=sua_chave_openai_aqui
-SINNC_USUARIO=seu_usuario_sinnc
-SINNC_SENHA=sua_senha_sinnc
 ```
 
 **Opção 2 - Groq (GRÁTIS):**
 ```env
 GROQ_API_KEY=sua_chave_groq_aqui
-SINNC_USUARIO=seu_usuario_sinnc
-SINNC_SENHA=sua_senha_sinnc
 ```
 
 ### Escolha seu Provedor de IA
