@@ -13,7 +13,7 @@ public class EscutaInicialTest extends BaseTest {
 
   @Test
   @Tag("smoke")
-  public void testEscuta Inicial() {
+  public void testEscutaInicial() {
     // Implementar teste para escuta_inicial
     System.out.println("Executando teste: Escuta Inicial");
   }

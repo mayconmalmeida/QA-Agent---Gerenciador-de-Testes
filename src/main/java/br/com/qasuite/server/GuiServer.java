@@ -476,7 +476,7 @@ public class GuiServer {
 
     private static String generateMockJava(String module, String menu, String testName) {
         String className = generateTestClassName(testName);
-        String packageName = "br.com.sinncosaude.pages." + module.toLowerCase().replace(" ", "_");
+        String packageName = "br.com.qasuite.pages." + module.toLowerCase().replace(" ", "_");
         // Sanitize method name - remove spaces and special chars, capitalize words
         String methodName = testName.replaceAll("[^a-zA-Z0-9\\s]", "").trim();
         methodName = Arrays.stream(methodName.split("\\s+"))
@@ -487,7 +487,7 @@ public class GuiServer {
         return String.format("""
             package %s;
 
-            import br.com.sinncosaude.config.BaseTest;
+            import br.com.qasuite.config.BaseTest;
             import org.junit.jupiter.api.Tag;
             import org.junit.jupiter.api.Test;
 
