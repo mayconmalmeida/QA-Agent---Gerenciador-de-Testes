@@ -112,6 +112,36 @@ mvn exec:java -e -Dexec.mainClass=com.microsoft.playwright.CLI -Dexec.args="inst
 mvn clean install
 ```
 
+## 🖥️ Iniciar Servidor GUI
+
+O servidor GUI agora roda em Python e usa SQLite para persistência de dados.
+
+### Windows (PowerShell)
+```powershell
+python gui\server.py
+```
+
+### Linux/Mac (Bash)
+```bash
+python3 gui/server.py
+```
+
+Ou use os scripts de inicialização:
+
+### Windows
+```powershell
+.\start-server.ps1
+```
+
+### Windows (Batch)
+```cmd
+start-server.bat
+```
+
+Após iniciar, acesse: **http://localhost:8080**
+
+> **Nota:** O banco de dados SQLite (`data/qa_agent.db`) é criado automaticamente na primeira execução. Todos os testes, menus e configurações são persistidos entre reinícios do servidor.
+
 ## 🧪 Gerar Novo Teste com IA
 
 ### Windows (PowerShell)
