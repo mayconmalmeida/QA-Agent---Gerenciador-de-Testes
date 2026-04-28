@@ -2097,19 +2097,43 @@ function resetToDefault() {
 
 // Initialize drag and drop functionality
 function initializeDragAndDrop() {
+    console.log('Initializing drag and drop...');
+    
     const draggables = document.querySelectorAll('.draggable');
     const containers = document.querySelectorAll('#modulesContainer, [id^="menus-"]');
     
+    console.log(`Found ${draggables.length} draggable elements`);
+    console.log(`Found ${containers.length} containers`);
+    
     draggables.forEach(draggable => {
+        // Remove existing listeners to avoid duplicates
+        draggable.removeEventListener('dragstart', handleDragStart);
+        draggable.removeEventListener('dragend', handleDragEnd);
+        
+        // Add new listeners
         draggable.addEventListener('dragstart', handleDragStart);
         draggable.addEventListener('dragend', handleDragEnd);
+        
+        // Ensure draggable attribute is set
+        draggable.setAttribute('draggable', 'true');
+        
+        console.log(`Setup drag for: ${draggable.dataset.key} (${draggable.dataset.type})`);
     });
     
     containers.forEach(container => {
+        // Remove existing listeners
+        container.removeEventListener('dragover', handleDragOver);
+        container.removeEventListener('drop', handleDrop);
+        container.removeEventListener('dragenter', handleDragEnter);
+        container.removeEventListener('dragleave', handleDragLeave);
+        
+        // Add new listeners
         container.addEventListener('dragover', handleDragOver);
         container.addEventListener('drop', handleDrop);
         container.addEventListener('dragenter', handleDragEnter);
         container.addEventListener('dragleave', handleDragLeave);
+        
+        console.log(`Setup drop for container: ${container.id}`);
     });
 }
 
@@ -2119,6 +2143,8 @@ let draggedKey = null;
 let draggedModule = null;
 
 function handleDragStart(e) {
+    console.log('Drag started:', this.dataset.key, this.dataset.type);
+    
     draggedElement = this;
     draggedType = this.dataset.type;
     draggedKey = this.dataset.key;
