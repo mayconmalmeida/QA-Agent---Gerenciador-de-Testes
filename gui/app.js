@@ -73,9 +73,114 @@ const defaultMenuStructure = {
 // Load menu structure from localStorage or use default
 let menuStructure = JSON.parse(localStorage.getItem('qaMenuStructure')) || defaultMenuStructure;
 
-// Saved tests storage
-let savedTests = JSON.parse(localStorage.getItem('qaTests') || '[]');
+// Saved tests storage - will be loaded from database
+let savedTests = [];
 let editingTestId = null; // Track if we're editing a test
+
+// API functions for database persistence
+async function saveTestToDB(test) {
+    try {
+        const response = await fetch('http://localhost:8080/api/save-test', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(test)
+        });
+        return await response.json();
+    } catch (error) {
+        console.error('Error saving test to DB:', error);
+        // Fallback to localStorage
+        localStorage.setItem('qaTests', JSON.stringify(savedTests));
+        return { status: 'fallback' };
+    }
+}
+
+async function loadTestsFromDB() {
+    try {
+        const response = await fetch('http://localhost:8080/api/load-tests');
+        const tests = await response.json();
+        savedTests = tests;
+        localStorage.setItem('qaTests', JSON.stringify(tests)); // Backup to localStorage
+        return tests;
+    } catch (error) {
+        console.error('Error loading tests from DB:', error);
+        // Fallback to localStorage
+        savedTests = JSON.parse(localStorage.getItem('qaTests') || '[]');
+        return savedTests;
+    }
+}
+
+async function deleteTestFromDB(testId) {
+    try {
+        const response = await fetch('http://localhost:8080/api/delete-test', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id: testId })
+        });
+        return await response.json();
+    } catch (error) {
+        console.error('Error deleting test from DB:', error);
+        return { status: 'fallback' };
+    }
+}
+
+async function saveMenuStructureToDB(structure) {
+    try {
+        const response = await fetch('http://localhost:8080/api/save-menu-structure', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(structure)
+        });
+        return await response.json();
+    } catch (error) {
+        console.error('Error saving menu structure to DB:', error);
+        localStorage.setItem('qaMenuStructure', JSON.stringify(structure));
+        return { status: 'fallback' };
+    }
+}
+
+async function loadMenuStructureFromDB() {
+    try {
+        const response = await fetch('http://localhost:8080/api/load-menu-structure');
+        const structure = await response.json();
+        if (Object.keys(structure).length > 0) {
+            menuStructure = structure;
+            localStorage.setItem('qaMenuStructure', JSON.stringify(structure));
+        }
+        return structure;
+    } catch (error) {
+        console.error('Error loading menu structure from DB:', error);
+        return menuStructure;
+    }
+}
+
+async function saveConfigToDB(config) {
+    try {
+        const response = await fetch('http://localhost:8080/api/save-config', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(config)
+        });
+        return await response.json();
+    } catch (error) {
+        console.error('Error saving config to DB:', error);
+        localStorage.setItem('qaAgentConfig', JSON.stringify(config));
+        return { status: 'fallback' };
+    }
+}
+
+async function loadConfigFromDB() {
+    try {
+        const response = await fetch('http://localhost:8080/api/load-config');
+        const config = await response.json();
+        if (Object.keys(config).length > 0) {
+            localStorage.setItem('qaAgentConfig', JSON.stringify(config));
+        }
+        return config;
+    } catch (error) {
+        console.error('Error loading config from DB:', error);
+        return {};
+    }
+}
 
 // Current view state persistence
 const VIEW_STATE_KEY = 'qaCurrentView';
@@ -295,36 +400,38 @@ function showAlert(message, type = 'info', callback = null) {
 }
 
 // Initialize
-document.addEventListener('DOMContentLoaded', () => {
-    // Load data from disk on startup
-    loadFromDiskOnStartup().then(() => {
-        loadModulesList();
-        
-        // Restore previous view state
-        const state = restoreViewState();
-        console.log('Initializing with state:', state);
+document.addEventListener('DOMContentLoaded', async () => {
+    // Load data from database on startup
+    await loadTestsFromDB();
+    await loadMenuStructureFromDB();
+    await loadConfigFromDB();
     
-        switch (state.view) {
-            case 'testList':
-                if (state.moduleKey && state.menuKey) {
-                    showModuleTests(state.moduleKey, state.menuKey);
-                } else {
-                    showAllTests();
-                }
-                break;
-            case 'newTest':
-                showNewTestForm();
-                break;
-            case 'menuEditor':
-                showMenuEditor();
-                break;
-            case 'config':
-                showConfigForm();
-                break;
-            default:
-                showDashboard();
-        }
-    });
+    loadModulesList();
+    
+    // Restore previous view state
+    const state = restoreViewState();
+    console.log('Initializing with state:', state);
+
+    switch (state.view) {
+        case 'testList':
+            if (state.moduleKey && state.menuKey) {
+                showModuleTests(state.moduleKey, state.menuKey);
+            } else {
+                showAllTests();
+            }
+            break;
+        case 'newTest':
+            showNewTestForm();
+            break;
+        case 'menuEditor':
+            showMenuEditor();
+            break;
+        case 'config':
+            showConfigForm();
+            break;
+        default:
+            showDashboard();
+    }
 });
 
 // Show dashboard
@@ -663,7 +770,7 @@ function updatePageTitle(title, subtitle) {
 
 // Hide all views helper
 function hideAllViews() {
-    const views = ['dashboardView', 'testListView', 'executionsView', 'newTestForm', 'menuEditor', 'configForm'];
+    const views = ['dashboardView', 'testListView', 'executionsView', 'newTestForm', 'menuEditorView', 'configView'];
     views.forEach(viewId => {
         const view = document.getElementById(viewId);
         if (view) view.classList.add('hidden');
@@ -912,13 +1019,13 @@ function getTypeBadge(type) {
 }
 
 // Delete test
-function deleteTest(testId) {
+async function deleteTest(testId) {
     if (!confirm('Tem certeza que deseja excluir este teste?')) {
         return;
     }
     
     savedTests = savedTests.filter(test => test.id !== testId);
-    localStorage.setItem('qaTests', JSON.stringify(savedTests));
+    await deleteTestFromDB(testId);
     
     // Reload the current view
     const currentModule = document.querySelector('[onclick*="showModuleTests"]').getAttribute('onclick').match(/'([^']+)'/)[1];
@@ -1135,7 +1242,7 @@ async function generateTest() {
 }
 
 // Save test draft
-function saveTest() {
+async function saveTest() {
     const module = document.getElementById('moduleSelect').value;
     const menu = document.getElementById('menuSelect').value;
     const testType = document.getElementById('testTypeSelect').value;
@@ -1167,7 +1274,7 @@ function saveTest() {
                 updatedAt: new Date().toISOString()
             };
             
-            localStorage.setItem('qaTests', JSON.stringify(savedTests));
+            await saveTestToDB(savedTests[testIndex]);
             
             showAlert('Teste atualizado com sucesso!', 'success', () => {
                 resetForm();
@@ -1192,7 +1299,7 @@ function saveTest() {
         console.log('Test object created:', test);
         
         savedTests.push(test);
-        localStorage.setItem('qaTests', JSON.stringify(savedTests));
+        await saveTestToDB(test);
         
         console.log('Tests after save:', savedTests);
         
@@ -1264,7 +1371,7 @@ function resetForm() {
 }
 
 // Apply generated test to project
-function applyGenerated() {
+async function applyGenerated() {
     if (!window.currentGenerated) return;
     
     showLoading('Aplicando teste ao projeto...');
@@ -1286,7 +1393,7 @@ function applyGenerated() {
     };
     
     savedTests.push(test);
-    localStorage.setItem('qaTests', JSON.stringify(savedTests));
+    await saveTestToDB(test);
     
     // This would call a backend endpoint to write files
     fetch('http://localhost:8080/api/apply-test', {
@@ -1319,7 +1426,7 @@ function discardGenerated() {
 }
 
 // Save generated test as draft
-function saveGeneratedAsDraft() {
+async function saveGeneratedAsDraft() {
     if (!window.currentGenerated) return;
     
     // Save the generated test to localStorage
@@ -1339,7 +1446,7 @@ function saveGeneratedAsDraft() {
     };
     
     savedTests.push(test);
-    localStorage.setItem('qaTests', JSON.stringify(savedTests));
+    await saveTestToDB(test);
     
     showAlert('Teste gerado salvo como rascunho!', 'success', () => {
         // Clear the generated output and navigate to test list
@@ -1580,10 +1687,10 @@ function deleteTest(testId) {
         'Confirmar Exclusão',
         `Tem certeza que deseja excluir o teste "${test.name}"? Esta ação não pode ser desfeita.`,
         'warning',
-        () => {
+        async () => {
             // Proceed with deletion
             savedTests = savedTests.filter(t => t.id !== testId);
-            localStorage.setItem('qaTests', JSON.stringify(savedTests));
+            await deleteTestFromDB(testId);
             
             // Show success message and exit to dashboard
             showAlert('Teste excluído com sucesso!', 'success', () => {
@@ -1679,7 +1786,7 @@ function loadConfig() {
 }
 
 // Save configuration
-function saveConfig() {
+async function saveConfig() {
     const config = {
         baseUrl: document.getElementById('baseUrl').value,
         username: document.getElementById('username').value,
@@ -1689,7 +1796,7 @@ function saveConfig() {
         browser: document.getElementById('browser').value
     };
     
-    localStorage.setItem('qaAgentConfig', JSON.stringify(config));
+    await saveConfigToDB(config);
     
     // Also send to backend to update config.properties
     fetch('/api/update-config', {
@@ -1936,8 +2043,8 @@ function addModule() {
 }
 
 // Save menu structure
-function saveMenuStructure() {
-    localStorage.setItem('qaMenuStructure', JSON.stringify(menuStructure));
+async function saveMenuStructure() {
+    await saveMenuStructureToDB(menuStructure);
     loadModulesList();
     updateModuleSelect(); // Update the module select in new test form
     showAlert('Estrutura de menus salva com sucesso!', 'success');
@@ -2116,6 +2223,7 @@ function reorderModules() {
     });
     
     menuStructure = newOrder;
+    saveMenuStructure();
 }
 
 function reorderMenus(targetModule) {
@@ -2129,4 +2237,5 @@ function reorderMenus(targetModule) {
     });
     
     menuStructure[targetModule].menus = newOrder;
+    saveMenuStructure();
 }

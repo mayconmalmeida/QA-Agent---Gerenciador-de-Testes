@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Simple HTTP server for Sinnc QA Agent GUI
-Serves the web interface and provides mock API endpoints
+Simple HTTP server for QA Agent GUI
+Serves the web interface and provides API endpoints with SQLite persistence
 """
 
 import http.server
@@ -9,11 +9,58 @@ import socketserver
 import json
 import os
 import subprocess
+import sqlite3
 from urllib.parse import urlparse, parse_qs
 from pathlib import Path
 
 PORT = 8080
 DIRECTORY = "gui"
+DB_PATH = "data/qa_agent.db"
+
+def init_db():
+    """Initialize SQLite database with required tables"""
+    os.makedirs("data", exist_ok=True)
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    
+    # Tests table
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS tests (
+            id TEXT PRIMARY KEY,
+            module TEXT NOT NULL,
+            menu TEXT NOT NULL,
+            test_type TEXT,
+            priority TEXT,
+            name TEXT NOT NULL,
+            description TEXT,
+            test_data TEXT,
+            feature TEXT,
+            java TEXT,
+            status TEXT,
+            created_at TEXT,
+            updated_at TEXT
+        )
+    ''')
+    
+    # Menu structure table
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS menu_structure (
+            key TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            structure_json TEXT NOT NULL
+        )
+    ''')
+    
+    # Config table
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS config (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL
+        )
+    ''')
+    
+    conn.commit()
+    conn.close()
 
 class GuiHandler(http.server.SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
@@ -110,6 +157,188 @@ class GuiHandler(http.server.SimpleHTTPRequestHandler):
                 self.send_header('Content-type', 'application/json')
                 self.end_headers()
                 self.wfile.write(json.dumps(response).encode())
+            except Exception as e:
+                self.send_response(500)
+                self.end_headers()
+                self.wfile.write(json.dumps({'error': str(e)}).encode())
+        
+        # API: Save test to database
+        elif parsed_path.path == '/api/save-test':
+            try:
+                data = json.loads(post_data.decode('utf-8'))
+                conn = sqlite3.connect(DB_PATH)
+                cursor = conn.cursor()
+                
+                cursor.execute('''
+                    INSERT OR REPLACE INTO tests 
+                    (id, module, menu, test_type, priority, name, description, test_data, feature, java, status, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ''', (
+                    data.get('id'),
+                    data.get('module'),
+                    data.get('menu'),
+                    data.get('testType'),
+                    data.get('priority'),
+                    data.get('name'),
+                    data.get('description'),
+                    json.dumps(data.get('testData', {})),
+                    data.get('feature'),
+                    data.get('java'),
+                    data.get('status', 'draft'),
+                    data.get('createdAt'),
+                    data.get('updatedAt')
+                ))
+                
+                conn.commit()
+                conn.close()
+                
+                self.send_response(200)
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({'status': 'success'}).encode())
+            except Exception as e:
+                self.send_response(500)
+                self.end_headers()
+                self.wfile.write(json.dumps({'error': str(e)}).encode())
+        
+        # API: Load all tests from database
+        elif parsed_path.path == '/api/load-tests':
+            try:
+                conn = sqlite3.connect(DB_PATH)
+                cursor = conn.cursor()
+                
+                cursor.execute('SELECT * FROM tests')
+                rows = cursor.fetchall()
+                columns = [desc[0] for desc in cursor.description]
+                
+                tests = []
+                for row in rows:
+                    test = dict(zip(columns, row))
+                    test['testData'] = json.loads(test['test_data']) if test['test_data'] else {}
+                    test['testType'] = test['test_type']
+                    del test['test_data']
+                    del test['test_type']
+                    tests.append(test)
+                
+                conn.close()
+                
+                self.send_response(200)
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps(tests).encode())
+            except Exception as e:
+                self.send_response(500)
+                self.end_headers()
+                self.wfile.write(json.dumps({'error': str(e)}).encode())
+        
+        # API: Delete test from database
+        elif parsed_path.path == '/api/delete-test':
+            try:
+                data = json.loads(post_data.decode('utf-8'))
+                test_id = data.get('id')
+                
+                conn = sqlite3.connect(DB_PATH)
+                cursor = conn.cursor()
+                cursor.execute('DELETE FROM tests WHERE id = ?', (test_id,))
+                conn.commit()
+                conn.close()
+                
+                self.send_response(200)
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({'status': 'success'}).encode())
+            except Exception as e:
+                self.send_response(500)
+                self.end_headers()
+                self.wfile.write(json.dumps({'error': str(e)}).encode())
+        
+        # API: Save menu structure to database
+        elif parsed_path.path == '/api/save-menu-structure':
+            try:
+                data = json.loads(post_data.decode('utf-8'))
+                structure_json = json.dumps(data)
+                
+                conn = sqlite3.connect(DB_PATH)
+                cursor = conn.cursor()
+                cursor.execute('INSERT OR REPLACE INTO menu_structure (key, name, structure_json) VALUES (?, ?, ?)',
+                              ('main', 'Menu Structure', structure_json))
+                conn.commit()
+                conn.close()
+                
+                self.send_response(200)
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({'status': 'success'}).encode())
+            except Exception as e:
+                self.send_response(500)
+                self.end_headers()
+                self.wfile.write(json.dumps({'error': str(e)}).encode())
+        
+        # API: Load menu structure from database
+        elif parsed_path.path == '/api/load-menu-structure':
+            try:
+                conn = sqlite3.connect(DB_PATH)
+                cursor = conn.cursor()
+                cursor.execute('SELECT structure_json FROM menu_structure WHERE key = ?', ('main',))
+                row = cursor.fetchone()
+                conn.close()
+                
+                if row:
+                    structure = json.loads(row[0])
+                else:
+                    structure = {}
+                
+                self.send_response(200)
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps(structure).encode())
+            except Exception as e:
+                self.send_response(500)
+                self.end_headers()
+                self.wfile.write(json.dumps({'error': str(e)}).encode())
+        
+        # API: Save config to database
+        elif parsed_path.path == '/api/save-config':
+            try:
+                data = json.loads(post_data.decode('utf-8'))
+                
+                conn = sqlite3.connect(DB_PATH)
+                cursor = conn.cursor()
+                for key, value in data.items():
+                    cursor.execute('INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)',
+                                  (key, json.dumps(value) if isinstance(value, (dict, list)) else str(value)))
+                conn.commit()
+                conn.close()
+                
+                self.send_response(200)
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({'status': 'success'}).encode())
+            except Exception as e:
+                self.send_response(500)
+                self.end_headers()
+                self.wfile.write(json.dumps({'error': str(e)}).encode())
+        
+        # API: Load config from database
+        elif parsed_path.path == '/api/load-config':
+            try:
+                conn = sqlite3.connect(DB_PATH)
+                cursor = conn.cursor()
+                cursor.execute('SELECT key, value FROM config')
+                rows = cursor.fetchall()
+                conn.close()
+                
+                config = {}
+                for key, value in rows:
+                    try:
+                        config[key] = json.loads(value)
+                    except:
+                        config[key] = value
+                
+                self.send_response(200)
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps(config).encode())
             except Exception as e:
                 self.send_response(500)
                 self.end_headers()
@@ -337,11 +566,11 @@ class GuiHandler(http.server.SimpleHTTPRequestHandler):
     
     def generate_mock_java(self, module, menu, test_name):
         class_name = ''.join(c for c in test_name if c.isalnum()) + 'Test'
-        package_name = f"br.com.sinncosaude.pages.{module.lower().replace(' ', '_')}"
+        package_name = f"br.com.qasuite.pages.{module.lower().replace(' ', '_')}"
         
         return f"""package {package_name};
 
-import br.com.sinncosaude.config.BaseTest;
+import br.com.qasuite.config.BaseTest;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
@@ -363,6 +592,11 @@ public class {class_name} extends BaseTest {{
 
 def main():
     os.chdir('..')  # Go to project root
+    
+    # Initialize database
+    print("Inicializando banco de dados...")
+    init_db()
+    print("Banco de dados inicializado com sucesso!")
     
     with socketserver.TCPServer(("", PORT), GuiHandler) as httpd:
         print("=" * 50)
