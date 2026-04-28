@@ -50,7 +50,7 @@ public class GuiServer {
         });
 
         System.out.println("=================================================");
-        System.out.println("  Sinnc QA Agent - GUI Server");
+        System.out.println("  QA Agent - GUI Server");
         System.out.println("=================================================");
         System.out.println("  Acesse: http://localhost:" + PORT);
         System.out.println("=================================================");
@@ -77,7 +77,7 @@ public class GuiServer {
                     "C:\\Program Files\\Eclipse Adoptium\\jdk-17.0.17.10-hotspot\\bin\\java.exe",
                     "-cp",
                     "target\\classes;target\\test-classes",
-                    "br.com.sinncosaude.cli.GerarTeste",
+                    "br.com.qasuite.cli.GerarTeste",
                     tempFile.toString()
                 );
                 pb.directory(PROJECT_DIR.toFile());
@@ -130,7 +130,7 @@ public class GuiServer {
 
                 // Create Java test file
                 String className = testName.replaceAll("[^a-zA-Z0-9]", "") + "Test";
-                Path javaPath = Paths.get("src/test/java/br/com/sinncosaude/pages", moduleFolder, className + ".java");
+                Path javaPath = Paths.get("src/test/java/br/com/qasuite/pages", moduleFolder, className + ".java");
                 Files.createDirectories(javaPath.getParent());
                 Files.writeString(javaPath, javaContent, java.nio.charset.StandardCharsets.UTF_8);
 
@@ -207,7 +207,7 @@ public class GuiServer {
 
                 // Check if test class exists, if not generate it automatically
                 String moduleFolder = module.toLowerCase().replace(" ", "_");
-                Path javaPath = Paths.get("src/test/java/br/com/sinncosaude/pages", moduleFolder, testClassName + ".java");
+                Path javaPath = Paths.get("src/test/java/br/com/qasuite/pages", moduleFolder, testClassName + ".java");
 
                 if (!Files.exists(javaPath)) {
                     System.out.println("[GuiServer] Test class not found, generating: " + javaPath);
@@ -312,7 +312,7 @@ public class GuiServer {
                 String menuKey = ctx.pathParam("menuKey");
 
                 // Execute all tests in the module package (wildcard)
-                String packagePattern = "br.com.sinncosaude.pages." + moduleKey.toLowerCase().replace(" ", "_") + ".*Test";
+                String packagePattern = "br.com.qasuite.pages." + moduleKey.toLowerCase().replace(" ", "_") + ".*Test";
 
                 ProcessBuilder pb = new ProcessBuilder(
                     MVN_CMD,
@@ -347,7 +347,7 @@ public class GuiServer {
                 String moduleKey = ctx.pathParam("moduleKey");
 
                 // Execute all tests in the module package (wildcard)
-                String packagePattern = "br.com.sinncosaude.pages." + moduleKey.toLowerCase().replace(" ", "_") + ".*Test";
+                String packagePattern = "br.com.qasuite.pages." + moduleKey.toLowerCase().replace(" ", "_") + ".*Test";
 
                 ProcessBuilder pb = new ProcessBuilder(
                     MVN_CMD,
@@ -437,6 +437,110 @@ public class GuiServer {
                 ctx.result(gson.toJson(response));
             } catch (Exception e) {
                 ctx.status(500).result("Erro ao listar dados: " + e.getMessage());
+                e.printStackTrace();
+            }
+        });
+
+        // API: SQLite - Load all tests
+        app.get("/api/load-tests", ctx -> {
+            ctx.header("Access-Control-Allow-Origin", "*");
+            try {
+                DatabaseManager db = new DatabaseManager();
+                var tests = db.loadTests();
+                ctx.json(tests);
+            } catch (Exception e) {
+                ctx.status(500).result("Erro ao carregar testes: " + e.getMessage());
+                e.printStackTrace();
+            }
+        });
+
+        // API: SQLite - Save test
+        app.post("/api/save-test", ctx -> {
+            ctx.header("Access-Control-Allow-Origin", "*");
+            try {
+                var test = gson.fromJson(ctx.body(), java.util.Map.class);
+                DatabaseManager db = new DatabaseManager();
+                db.saveTest(test);
+                JsonObject response = new JsonObject();
+                response.addProperty("status", "success");
+                ctx.json(response);
+            } catch (Exception e) {
+                ctx.status(500).result("Erro ao salvar teste: " + e.getMessage());
+                e.printStackTrace();
+            }
+        });
+
+        // API: SQLite - Delete test
+        app.post("/api/delete-test", ctx -> {
+            ctx.header("Access-Control-Allow-Origin", "*");
+            try {
+                var request = gson.fromJson(ctx.body(), java.util.Map.class);
+                String testId = (String) request.get("id");
+                DatabaseManager db = new DatabaseManager();
+                db.deleteTest(testId);
+                JsonObject response = new JsonObject();
+                response.addProperty("status", "success");
+                ctx.json(response);
+            } catch (Exception e) {
+                ctx.status(500).result("Erro ao deletar teste: " + e.getMessage());
+                e.printStackTrace();
+            }
+        });
+
+        // API: SQLite - Load menu structure
+        app.get("/api/load-menu-structure", ctx -> {
+            ctx.header("Access-Control-Allow-Origin", "*");
+            try {
+                DatabaseManager db = new DatabaseManager();
+                var structure = db.loadMenuStructure();
+                ctx.json(structure);
+            } catch (Exception e) {
+                ctx.status(500).result("Erro ao carregar estrutura: " + e.getMessage());
+                e.printStackTrace();
+            }
+        });
+
+        // API: SQLite - Save menu structure
+        app.post("/api/save-menu-structure", ctx -> {
+            ctx.header("Access-Control-Allow-Origin", "*");
+            try {
+                var structure = gson.fromJson(ctx.body(), java.util.Map.class);
+                DatabaseManager db = new DatabaseManager();
+                db.saveMenuStructure(structure);
+                JsonObject response = new JsonObject();
+                response.addProperty("status", "success");
+                ctx.json(response);
+            } catch (Exception e) {
+                ctx.status(500).result("Erro ao salvar estrutura: " + e.getMessage());
+                e.printStackTrace();
+            }
+        });
+
+        // API: SQLite - Load config
+        app.get("/api/load-config", ctx -> {
+            ctx.header("Access-Control-Allow-Origin", "*");
+            try {
+                DatabaseManager db = new DatabaseManager();
+                var config = db.loadConfig();
+                ctx.json(config);
+            } catch (Exception e) {
+                ctx.status(500).result("Erro ao carregar config: " + e.getMessage());
+                e.printStackTrace();
+            }
+        });
+
+        // API: SQLite - Save config
+        app.post("/api/save-config", ctx -> {
+            ctx.header("Access-Control-Allow-Origin", "*");
+            try {
+                var config = gson.fromJson(ctx.body(), java.util.Map.class);
+                DatabaseManager db = new DatabaseManager();
+                db.saveConfig(config);
+                JsonObject response = new JsonObject();
+                response.addProperty("status", "success");
+                ctx.json(response);
+            } catch (Exception e) {
+                ctx.status(500).result("Erro ao salvar config: " + e.getMessage());
                 e.printStackTrace();
             }
         });

@@ -114,21 +114,9 @@ mvn clean install
 
 ## 🖥️ Iniciar Servidor GUI
 
-O servidor GUI agora roda em Python e usa SQLite para persistência de dados.
+O servidor GUI roda em **Java com SQLite** para persistência de dados - ideal para comercialização.
 
 ### Windows (PowerShell)
-```powershell
-python gui\server.py
-```
-
-### Linux/Mac (Bash)
-```bash
-python3 gui/server.py
-```
-
-Ou use os scripts de inicialização:
-
-### Windows
 ```powershell
 .\start-server.ps1
 ```
@@ -136,6 +124,16 @@ Ou use os scripts de inicialização:
 ### Windows (Batch)
 ```cmd
 start-server.bat
+```
+
+### Linux/Mac (Bash)
+```bash
+./start-server.sh
+```
+
+Ou manualmente com Maven:
+```bash
+mvn clean compile exec:java -Dexec.mainClass="br.com.qasuite.server.GuiServer"
 ```
 
 Após iniciar, acesse: **http://localhost:8080**
