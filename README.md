@@ -164,27 +164,29 @@ A IA (Claude) gerará automaticamente:
 Use frases curtas e objetivas, com dados fictícios e placeholders quando houver credenciais/URLs:
 
 ```text
-Objetivo: Validar o fluxo de “Consulta Médica” (caminho feliz).
+Objetivo: Validar o fluxo de “Checkout com Cartão” (caminho feliz).
 
 Pré-condições:
-1. Sistema disponível em <BASE_URL>
-2. Usuário <USUARIO_TESTE> com permissão de atendimento
-3. Paciente de teste existente: <PACIENTE_TESTE>
+1. Loja disponível em <BASE_URL>
+2. Usuário <USUARIO_TESTE> com endereço cadastrado
+3. Produto <SKU_TESTE> com estoque disponível
+4. Gateway de pagamento em modo sandbox
 
 Passos:
 1. Acessar <BASE_URL>
 2. Fazer login com <USUARIO_TESTE> e <SENHA_TESTE>
-3. Selecionar a unidade <UNIDADE_TESTE> (se aparecer modal)
-4. Navegar até o módulo “Atendimento da Atenção Primária”
-5. Abrir o menu “Consulta Médica”
-6. Selecionar paciente <PACIENTE_TESTE>
-7. Preencher Anamnese, Subjetivo e Objetivo com textos curtos de teste
-8. Salvar e fechar a consulta
+3. Buscar o produto <SKU_TESTE> e adicionar ao carrinho
+4. Abrir o carrinho e iniciar checkout
+5. Selecionar entrega “Padrão” para o endereço <ENDERECO_TESTE>
+6. Selecionar pagamento “Cartão de Crédito”
+7. Preencher dados do cartão de teste: <CARTAO_TESTE>
+8. Confirmar o pedido
 
 Resultado esperado:
-1. Registro salvo com mensagem de sucesso (toast/alert)
-2. Popup/modal de integração fechado
-3. Campos salvos nos locais corretos (Anamnese/Subjetivo/Objetivo)
+1. Pedido criado com status “Aprovado” ou “Processando”
+2. Número do pedido exibido: <PEDIDO_ID>
+3. E-mail de confirmação enfileirado/enviado para <EMAIL_TESTE>
+4. Estoque do <SKU_TESTE> atualizado
 ```
 
 ## ▶️ Executar Testes
