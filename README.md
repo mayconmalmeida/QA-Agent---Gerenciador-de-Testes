@@ -4,11 +4,7 @@ Framework completo de automação de testes com interface web, integrando Playwr
 
 ## Sobre o projeto
 
-Este projeto nasceu de uma necessidade real do meu dia a dia como **Analista de Requisitos e QA**.
-
-Cansado de escrever casos de teste manualmente, criar cenários Gherkin do zero e repetir o mesmo trabalho de documentação toda vez que um novo fluxo precisava ser testado, decidi automatizar o próprio processo de criação de testes.
-
-O **QA Agent** é uma aplicação web que combina uma interface visual intuitiva com o poder de IA (Anthropic Claude) para gerar automaticamente:
+O **QA Agent** é uma aplicação web que combina uma interface visual com IA para gerar automaticamente:
 
 - Arquivos `.feature` (Gherkin/BDD) em português
 - Código Java com Playwright pronto para executar
@@ -16,8 +12,6 @@ O **QA Agent** é uma aplicação web que combina uma interface visual intuitiva
 - Relatório HTML de execução com screenshots de falhas
 
 A ideia é simples: você descreve o fluxo em linguagem natural, o agente entende, gera todos os artefatos e ainda executa o teste no navegador real — tudo isso em minutos, não horas.
-
-> Desenvolvido por **Maycon Malicheski de Almeida** para uso próprio como Analista de Requisitos e QA.
 
 ## 📋 Pré-requisitos
 
@@ -165,6 +159,34 @@ A IA (Claude) gerará automaticamente:
 - Classe Java com Page Objects
 - Caso de teste formatado para Jira/Xray
 
+### Exemplo (mascarado) de descrição de teste
+
+Use frases curtas e objetivas, com dados fictícios e placeholders quando houver credenciais/URLs:
+
+```text
+Objetivo: Validar o fluxo de “Consulta Médica” (caminho feliz).
+
+Pré-condições:
+1. Sistema disponível em <BASE_URL>
+2. Usuário <USUARIO_TESTE> com permissão de atendimento
+3. Paciente de teste existente: <PACIENTE_TESTE>
+
+Passos:
+1. Acessar <BASE_URL>
+2. Fazer login com <USUARIO_TESTE> e <SENHA_TESTE>
+3. Selecionar a unidade <UNIDADE_TESTE> (se aparecer modal)
+4. Navegar até o módulo “Atendimento da Atenção Primária”
+5. Abrir o menu “Consulta Médica”
+6. Selecionar paciente <PACIENTE_TESTE>
+7. Preencher Anamnese, Subjetivo e Objetivo com textos curtos de teste
+8. Salvar e fechar a consulta
+
+Resultado esperado:
+1. Registro salvo com mensagem de sucesso (toast/alert)
+2. Popup/modal de integração fechado
+3. Campos salvos nos locais corretos (Anamnese/Subjetivo/Objetivo)
+```
+
 ## ▶️ Executar Testes
 
 ### Windows (PowerShell)
@@ -260,7 +282,7 @@ qa-agent/
 
 ```properties
 # Ambiente
-base.url=http://10.8.0.20/ViewLogin
+base.url=https://example.test/login
 ambiente=homologacao
 
 # Browser

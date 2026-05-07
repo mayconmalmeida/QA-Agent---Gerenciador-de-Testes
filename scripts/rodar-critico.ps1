@@ -1,5 +1,5 @@
 #!/usr/bin/env pwsh
-# Sinnc Saúde - Roda testes Críticos
+# QA Agent - Roda testes Críticos
 # Script para executar testes de fluxos assistenciais críticos
 
 $ErrorActionPreference = "Stop"

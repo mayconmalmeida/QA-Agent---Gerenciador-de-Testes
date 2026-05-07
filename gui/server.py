@@ -14,13 +14,16 @@ from urllib.parse import urlparse, parse_qs
 from pathlib import Path
 
 PORT = 8080
-DIRECTORY = "gui"
-DB_PATH = "data/qa_agent.db"
+ROOT_DIR = Path(__file__).resolve().parents[1]
+GUI_DIR = ROOT_DIR / "gui"
+DATA_DIR = ROOT_DIR / "data"
+DB_PATH = DATA_DIR / "qa_agent.db"
+REPORT_PATH = ROOT_DIR / "output" / "reports" / "relatorio.html"
 
 def init_db():
     """Initialize SQLite database with required tables"""
-    os.makedirs("data", exist_ok=True)
-    conn = sqlite3.connect(DB_PATH)
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(str(DB_PATH))
     cursor = conn.cursor()
     
     # Tests table
@@ -64,19 +67,99 @@ def init_db():
 
 class GuiHandler(http.server.SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
-        super().__init__(*args, directory=DIRECTORY, **kwargs)
+        super().__init__(*args, directory=str(GUI_DIR), **kwargs)
     
     def do_GET(self):
         parsed_path = urlparse(self.path)
+
+        if parsed_path.path == '/api/load-tests':
+            try:
+                conn = sqlite3.connect(str(DB_PATH))
+                cursor = conn.cursor()
+                cursor.execute('SELECT * FROM tests')
+                rows = cursor.fetchall()
+                columns = [desc[0] for desc in cursor.description]
+
+                tests = []
+                for row in rows:
+                    test = dict(zip(columns, row))
+                    test['testData'] = test.get('test_data') or ''
+                    test['testType'] = test.get('test_type')
+                    test['createdAt'] = test.get('created_at')
+                    test['updatedAt'] = test.get('updated_at')
+                    test.pop('test_data', None)
+                    test.pop('test_type', None)
+                    test.pop('created_at', None)
+                    test.pop('updated_at', None)
+                    tests.append(test)
+
+                conn.close()
+
+                self.send_response(200)
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps(tests).encode())
+            except Exception as e:
+                self.send_response(500)
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({'error': str(e)}).encode())
+            return
+
+        if parsed_path.path == '/api/load-menu-structure':
+            try:
+                conn = sqlite3.connect(str(DB_PATH))
+                cursor = conn.cursor()
+                cursor.execute('SELECT structure_json FROM menu_structure WHERE key = ?', ('main',))
+                row = cursor.fetchone()
+                conn.close()
+
+                structure = json.loads(row[0]) if row else {}
+
+                self.send_response(200)
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps(structure).encode())
+            except Exception as e:
+                self.send_response(500)
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({'error': str(e)}).encode())
+            return
+
+        if parsed_path.path == '/api/load-config':
+            try:
+                conn = sqlite3.connect(str(DB_PATH))
+                cursor = conn.cursor()
+                cursor.execute('SELECT key, value FROM config')
+                rows = cursor.fetchall()
+                conn.close()
+
+                config = {}
+                for key, value in rows:
+                    try:
+                        config[key] = json.loads(value)
+                    except Exception:
+                        config[key] = value
+
+                self.send_response(200)
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps(config).encode())
+            except Exception as e:
+                self.send_response(500)
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({'error': str(e)}).encode())
+            return
         
         # Serve reports
         if parsed_path.path == '/reports':
-            report_path = Path("output/reports/relatorio.html")
-            if report_path.exists():
+            if REPORT_PATH.exists():
                 self.send_response(200)
                 self.send_header('Content-type', 'text/html')
                 self.end_headers()
-                self.wfile.write(report_path.read_text().encode())
+                self.wfile.write(REPORT_PATH.read_text(encoding='utf-8', errors='replace').encode('utf-8'))
             else:
                 self.send_response(404)
                 self.end_headers()
@@ -143,7 +226,7 @@ class GuiHandler(http.server.SimpleHTTPRequestHandler):
                 
                 # Create Java test file
                 class_name = ''.join(c for c in test_name if c.isalnum()) + 'Test'
-                java_path = Path(f"src/test/java/br/com/sinncosaude/pages/{module_folder}/{class_name}.java")
+                java_path = Path(f"src/test/java/br/com/qasuite/pages/{module_folder}/{class_name}.java")
                 java_path.parent.mkdir(parents=True, exist_ok=True)
                 java_path.write_text(java_content)
                 
@@ -166,7 +249,7 @@ class GuiHandler(http.server.SimpleHTTPRequestHandler):
         elif parsed_path.path == '/api/save-test':
             try:
                 data = json.loads(post_data.decode('utf-8'))
-                conn = sqlite3.connect(DB_PATH)
+                conn = sqlite3.connect(str(DB_PATH))
                 cursor = conn.cursor()
                 
                 cursor.execute('''
@@ -204,7 +287,7 @@ class GuiHandler(http.server.SimpleHTTPRequestHandler):
         # API: Load all tests from database
         elif parsed_path.path == '/api/load-tests':
             try:
-                conn = sqlite3.connect(DB_PATH)
+                conn = sqlite3.connect(str(DB_PATH))
                 cursor = conn.cursor()
                 
                 cursor.execute('SELECT * FROM tests')
@@ -214,10 +297,14 @@ class GuiHandler(http.server.SimpleHTTPRequestHandler):
                 tests = []
                 for row in rows:
                     test = dict(zip(columns, row))
-                    test['testData'] = json.loads(test['test_data']) if test['test_data'] else {}
-                    test['testType'] = test['test_type']
-                    del test['test_data']
-                    del test['test_type']
+                    test['testData'] = test.get('test_data') or ''
+                    test['testType'] = test.get('test_type')
+                    test['createdAt'] = test.get('created_at')
+                    test['updatedAt'] = test.get('updated_at')
+                    test.pop('test_data', None)
+                    test.pop('test_type', None)
+                    test.pop('created_at', None)
+                    test.pop('updated_at', None)
                     tests.append(test)
                 
                 conn.close()
@@ -237,7 +324,7 @@ class GuiHandler(http.server.SimpleHTTPRequestHandler):
                 data = json.loads(post_data.decode('utf-8'))
                 test_id = data.get('id')
                 
-                conn = sqlite3.connect(DB_PATH)
+                conn = sqlite3.connect(str(DB_PATH))
                 cursor = conn.cursor()
                 cursor.execute('DELETE FROM tests WHERE id = ?', (test_id,))
                 conn.commit()
@@ -258,7 +345,7 @@ class GuiHandler(http.server.SimpleHTTPRequestHandler):
                 data = json.loads(post_data.decode('utf-8'))
                 structure_json = json.dumps(data)
                 
-                conn = sqlite3.connect(DB_PATH)
+                conn = sqlite3.connect(str(DB_PATH))
                 cursor = conn.cursor()
                 cursor.execute('INSERT OR REPLACE INTO menu_structure (key, name, structure_json) VALUES (?, ?, ?)',
                               ('main', 'Menu Structure', structure_json))
@@ -277,7 +364,7 @@ class GuiHandler(http.server.SimpleHTTPRequestHandler):
         # API: Load menu structure from database
         elif parsed_path.path == '/api/load-menu-structure':
             try:
-                conn = sqlite3.connect(DB_PATH)
+                conn = sqlite3.connect(str(DB_PATH))
                 cursor = conn.cursor()
                 cursor.execute('SELECT structure_json FROM menu_structure WHERE key = ?', ('main',))
                 row = cursor.fetchone()
@@ -302,7 +389,7 @@ class GuiHandler(http.server.SimpleHTTPRequestHandler):
             try:
                 data = json.loads(post_data.decode('utf-8'))
                 
-                conn = sqlite3.connect(DB_PATH)
+                conn = sqlite3.connect(str(DB_PATH))
                 cursor = conn.cursor()
                 for key, value in data.items():
                     cursor.execute('INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)',
@@ -322,7 +409,7 @@ class GuiHandler(http.server.SimpleHTTPRequestHandler):
         # API: Load config from database
         elif parsed_path.path == '/api/load-config':
             try:
-                conn = sqlite3.connect(DB_PATH)
+                conn = sqlite3.connect(str(DB_PATH))
                 cursor = conn.cursor()
                 cursor.execute('SELECT key, value FROM config')
                 rows = cursor.fetchall()

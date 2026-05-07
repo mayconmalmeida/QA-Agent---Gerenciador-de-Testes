@@ -1,6 +1,6 @@
 # language: pt
 @smoke
-Funcionalidade: Login no Sistema Sinnc Saúde
+Funcionalidade: Login no Sistema
   Como um usuário do sistema
   Quero realizar login
   Para acessar as funcionalidades do sistema hospitalar

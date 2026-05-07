@@ -1,5 +1,5 @@
 #!/bin/bash
-# Sinnc Saúde - Roda testes Smoke
+# QA Agent - Roda testes Smoke
 # Script para executar suite de testes smoke (rápidos, rodam em todo deploy)
 
 set -e

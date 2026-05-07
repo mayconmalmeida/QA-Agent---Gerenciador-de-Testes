@@ -30,8 +30,11 @@ if ($LASTEXITCODE -ne 0) {
 # Start Java server
 Write-Host ""
 Write-Host "[INFO] Starting Java server with SQLite..." -ForegroundColor Green
-Write-Host "[INFO] Access: http://localhost:8080"
+Write-Host "[INFO] Tentando portas: 8080-8090 (primeira disponível)"
 Write-Host "[INFO] Database: data\qa_agent.db"
 Write-Host ""
+Write-Host "Aguarde o console do Java mostrar a porta real..."
+Write-Host ""
 
-mvn exec:java -Dexec.mainClass="br.com.qasuite.server.GuiServer" -q
+$env:MAVEN_OPTS=""
+mvn --% exec:java -Dexec.mainClass=br.com.qasuite.server.GuiServer -Dexec.classpathScope=compile

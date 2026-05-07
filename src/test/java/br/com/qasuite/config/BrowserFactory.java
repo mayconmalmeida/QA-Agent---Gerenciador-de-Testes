@@ -21,6 +21,12 @@ public class BrowserFactory {
             return;
         }
 
+        // Registra shutdown hook para fechar recursos quando JVM terminar
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+            System.out.println("[BrowserFactory] Shutdown hook acionado - fechando recursos...");
+            close();
+        }));
+
         String browserType = ConfigLoader.getBrowser();
         boolean headless = ConfigLoader.isHeadless();
         int slowMo = ConfigLoader.getSlowMotionMs();
@@ -62,10 +68,11 @@ public class BrowserFactory {
 
         Page page = browser.newPage(pageOptions);
         
-        // Configura timeout padrão
-        int timeout = ConfigLoader.getTimeoutPadraoMs();
+        // Configura timeouts separados
+        int timeout = ConfigLoader.getTimeoutPadraoMs(); // 5s para operações
+        int navigationTimeout = ConfigLoader.getNavigationTimeoutMs(); // 20s para navegação
         page.setDefaultTimeout(timeout);
-        page.setDefaultNavigationTimeout(timeout);
+        page.setDefaultNavigationTimeout(navigationTimeout);
 
         return page;
     }
@@ -84,15 +91,25 @@ public class BrowserFactory {
      * Fecha o browser e libera recursos
      */
     public static void close() {
+        // Fecha browser primeiro com timeout
         if (browser != null) {
-            browser.close();
+            try {
+                browser.close();
+                System.out.println("[BrowserFactory] Browser fechado");
+            } catch (Exception e) {
+                System.err.println("[BrowserFactory] Erro ao fechar browser: " + e.getMessage());
+            }
             browser = null;
-            System.out.println("[BrowserFactory] Browser fechado");
         }
+        // Fecha playwright independente do browser
         if (playwright != null) {
-            playwright.close();
+            try {
+                playwright.close();
+                System.out.println("[BrowserFactory] Playwright encerrado");
+            } catch (Exception e) {
+                System.err.println("[BrowserFactory] Erro ao fechar playwright: " + e.getMessage());
+            }
             playwright = null;
-            System.out.println("[BrowserFactory] Playwright encerrado");
         }
     }
 

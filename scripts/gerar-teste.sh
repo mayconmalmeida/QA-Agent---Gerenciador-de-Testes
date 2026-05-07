@@ -1,12 +1,12 @@
 #!/bin/bash
-# Sinnc Saúde - Gerador de Testes (Bash)
+# QA Agent - Gerador de Testes (Bash)
 # Script para executar o CLI interativo de geração de testes
 
 set -e
 
 echo ""
 echo "╔══════════════════════════════════════╗"
-echo "║   Sinnc Saúde — Gerador de Testes   ║"
+echo "║      QA Agent — Gerador de Testes   ║"
 echo "╚══════════════════════════════════════╝"
 echo ""
 

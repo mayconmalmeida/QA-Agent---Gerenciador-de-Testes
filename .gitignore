@@ -47,6 +47,9 @@ build/
 # ===========================================
 .env
 !.env.example
+.context7/api.key
+config.properties
+gui/erros*.txt
 
 # ===========================================
 # Sistema Operacional

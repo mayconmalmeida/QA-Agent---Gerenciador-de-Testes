@@ -1,5 +1,5 @@
 #!/bin/bash
-# Sinnc Saúde - Roda testes Críticos
+# QA Agent - Roda testes Críticos
 # Script para executar testes de fluxos assistenciais críticos
 
 set -e

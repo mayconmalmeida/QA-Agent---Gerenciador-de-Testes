@@ -1,14 +1,25 @@
 package br.com.qasuite.server;
 
+import br.com.qasuite.ai.IntentParserService;
+import br.com.qasuite.config.ExecutionConfig;
+import br.com.qasuite.domain.TestPlan;
 import com.google.gson.Gson;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import io.javalin.Javalin;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 /**
@@ -17,7 +28,9 @@ import java.util.stream.Collectors;
 public class GuiServer {
 
     private static final Gson gson = new Gson();
-    private static final int PORT = 8080;
+    private static final int START_PORT = 8081;
+    private static final int MAX_PORT = 8091;
+    private static int currentPort = START_PORT;
     private static final Path DATA_DIR = Paths.get("data");
     private static final Path PROJECT_DIR = Paths.get(".").toAbsolutePath().normalize();
     private static final String MVN_CMD = "C:\\ProgramData\\chocolatey\\lib\\maven\\apache-maven-3.9.15\\bin\\mvn.cmd";
@@ -33,15 +46,36 @@ public class GuiServer {
             System.err.println("Erro ao criar diretório de dados: " + e.getMessage());
         }
 
-        Javalin app = Javalin.create(config -> {
-            config.staticFiles.add("gui");
-        }).start(PORT);
+        // Tenta iniciar em portas de 8081 a 8091
+        Javalin app = null;
+        for (int port = START_PORT; port <= MAX_PORT; port++) {
+            try {
+                app = Javalin.create(config -> {
+                    config.staticFiles.add("gui");
+                    config.showJavalinBanner = false;
+                }).start(port);
+                currentPort = port;
+                // Salva porta usada para o frontend
+                Files.writeString(DATA_DIR.resolve("server.port"), String.valueOf(port));
+                System.out.println("Servidor iniciado na porta: " + port);
+                break;
+            } catch (Exception e) {
+                System.out.println("Porta " + port + " em uso, tentando próxima...");
+                if (port == MAX_PORT) {
+                    throw new RuntimeException("Nenhuma porta disponível de " + START_PORT + " a " + MAX_PORT);
+                }
+            }
+        }
 
-        // Add global CORS headers
+        // Add global CORS and anti-cache headers
         app.before(ctx -> {
             ctx.header("Access-Control-Allow-Origin", "*");
             ctx.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
             ctx.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
+            // Anti-cache headers
+            ctx.header("Cache-Control", "no-cache, no-store, must-revalidate");
+            ctx.header("Pragma", "no-cache");
+            ctx.header("Expires", "0");
         });
 
         // Handle OPTIONS requests for CORS
@@ -49,11 +83,16 @@ public class GuiServer {
             ctx.status(200);
         });
 
+        // WebSocket: Real-time execution updates
+        app.ws("/ws/execution/{executionId}", ExecutionWebSocket::configure);
+
         System.out.println("=================================================");
         System.out.println("  QA Agent - GUI Server");
         System.out.println("=================================================");
-        System.out.println("  Acesse: http://localhost:" + PORT);
+        System.out.println("  Acesse: http://localhost:" + currentPort);
         System.out.println("=================================================");
+
+        Context7CliService context7Cli = new Context7CliService();
 
         // API: Generate test with AI
         app.post("/api/generate-test", ctx -> {
@@ -183,96 +222,33 @@ public class GuiServer {
 
             try {
                 String testId = ctx.pathParam("testId");
-
-                // Read test metadata
-                Path metadataFile = DATA_DIR.toAbsolutePath().resolve("current_test_metadata.json");
-                String testName = "";
-                String module = "";
-                String menu = "";
-                String description = "";
-                String testClassName = "CadastroPacienteTest"; // fallback
-
-                if (Files.exists(metadataFile)) {
-                    String metadataContent = Files.readString(metadataFile, java.nio.charset.StandardCharsets.UTF_8);
-                    JsonObject metadata = gson.fromJson(metadataContent, JsonObject.class);
-
-                    if (metadata.has("name")) {
-                        testName = metadata.get("name").getAsString();
-                        testClassName = generateTestClassName(testName);
-                    }
-                    if (metadata.has("module")) module = metadata.get("module").getAsString();
-                    if (metadata.has("menu")) menu = metadata.get("menu").getAsString();
-                    if (metadata.has("description")) description = metadata.get("description").getAsString();
-                }
-
-                // Check if test class exists, if not generate it automatically
-                String moduleFolder = module.toLowerCase().replace(" ", "_");
-                Path javaPath = Paths.get("src/test/java/br/com/qasuite/pages", moduleFolder, testClassName + ".java");
-
-                if (!Files.exists(javaPath)) {
-                    System.out.println("[GuiServer] Test class not found, generating: " + javaPath);
-
-                    // Generate test class code
-                    String javaContent = generateMockJava(module, menu, testName);
-
-                    // Create directory if needed
-                    Files.createDirectories(javaPath.getParent());
-
-                    // Write test file
-                    Files.writeString(javaPath, javaContent, java.nio.charset.StandardCharsets.UTF_8);
-                    System.out.println("[GuiServer] Generated test class at: " + javaPath.toAbsolutePath());
-                }
-
-                // First compile test classes, then run the test synchronously
-                // Step 1: Compile
-                ProcessBuilder compilePb = new ProcessBuilder(
-                    MVN_CMD,
-                    "test-compile",
-                    "-o",
-                    "-q"
-                );
-                compilePb.directory(PROJECT_DIR.toFile());
-                compilePb.inheritIO();
-
-                System.out.println("[GuiServer] Compiling test classes...");
-                Process compileProcess = compilePb.start();
-                int compileExit = compileProcess.waitFor();
-
-                if (compileExit != 0) {
-                    JsonObject response = new JsonObject();
-                    response.addProperty("status", "error");
-                    response.addProperty("testId", testId);
-                    response.addProperty("testClass", testClassName);
-                    response.addProperty("message", "Erro na compilação. Verifique o console do servidor.");
-                    ctx.result(gson.toJson(response));
+                DatabaseManager db = new DatabaseManager();
+                Map<String, Object> testData = db.loadTest(testId);
+                if (testData == null) {
+                    ctx.status(404);
+                    java.util.Map<String, String> response = new java.util.HashMap<>();
+                    response.put("status", "error");
+                    response.put("message", "Teste nao encontrado: " + testId);
+                    ctx.json(response);
                     return;
                 }
 
-                // Step 2: Run the test (in background so browser doesn't hang)
-                ProcessBuilder testPb = new ProcessBuilder(
-                    MVN_CMD,
-                    "test",
-                    "-Dtest=" + testClassName,
-                    "-o",
-                    "-q",
-                    "-DskipTests=false"
-                );
-                testPb.directory(PROJECT_DIR.toFile());
-                testPb.inheritIO();
+                String testName = String.valueOf(testData.getOrDefault("name", "GenericTest"));
+                String testClassName = generateTestClassName(testName);
+                System.out.println("[GuiServer] Executando teste solicitado pelo ID: " + testId + " - " + testName);
+                saveMetadataAndExecute(testData);
 
-                System.out.println("[GuiServer] Starting test: " + testClassName);
-                testPb.start();
-
-                JsonObject response = new JsonObject();
-                response.addProperty("status", "started");
-                response.addProperty("testId", testId);
-                response.addProperty("testClass", testClassName);
-                response.addProperty("compiled", true);
-                response.addProperty("message", "Teste " + testClassName + " compilado e iniciado. O Playwright será aberto automaticamente. Verifique o console do servidor.");
-
-                ctx.result(gson.toJson(response));
+                java.util.Map<String, String> response = new java.util.HashMap<>();
+                response.put("status", "started");
+                response.put("testId", testId);
+                response.put("testClass", testClassName);
+                response.put("message", "Teste iniciado em background. Acompanhe no console do servidor.");
+                ctx.json(response);
             } catch (Exception e) {
-                ctx.status(500).result("Erro ao executar teste: " + e.getMessage());
+                java.util.Map<String, String> response = new java.util.HashMap<>();
+                response.put("status", "error");
+                response.put("message", "Erro ao executar teste: " + e.getMessage());
+                ctx.json(response);
                 e.printStackTrace();
             }
         });
@@ -311,26 +287,26 @@ public class GuiServer {
                 String moduleKey = ctx.pathParam("moduleKey");
                 String menuKey = ctx.pathParam("menuKey");
 
-                // Execute all tests in the module package (wildcard)
-                String packagePattern = "br.com.qasuite.pages." + moduleKey.toLowerCase().replace(" ", "_") + ".*Test";
+                DatabaseManager db = new DatabaseManager();
+                List<Map<String, Object>> tests = db.loadTests().stream()
+                    .filter(test -> moduleKey.equalsIgnoreCase(String.valueOf(test.get("module"))))
+                    .filter(test -> menuKey.equalsIgnoreCase(String.valueOf(test.get("menu"))))
+                    .collect(Collectors.toList());
 
-                ProcessBuilder pb = new ProcessBuilder(
-                    MVN_CMD,
-                    "test",
-                    "-Dtest=" + packagePattern,
-                    "-o", // Offline mode
-                    "-q"  // Quiet
-                );
-                pb.directory(PROJECT_DIR.toFile());
-                pb.inheritIO();
-                pb.start(); // Start in background
+                if (tests.isEmpty()) {
+                    ctx.status(404).result("Nenhum teste encontrado para o menu " + menuKey);
+                    return;
+                }
+
+                saveMetadataAndExecute(tests.get(0));
 
                 JsonObject response = new JsonObject();
                 response.addProperty("status", "started");
                 response.addProperty("module", moduleKey);
                 response.addProperty("menu", menuKey);
-                response.addProperty("testPattern", packagePattern);
-                response.addProperty("message", "Testes do menu " + menuKey + " iniciados em background.");
+                response.addProperty("testId", String.valueOf(tests.get(0).get("id")));
+                response.addProperty("testName", String.valueOf(tests.get(0).get("name")));
+                response.addProperty("message", "Teste do menu " + menuKey + " iniciado em background.");
 
                 ctx.result(gson.toJson(response));
             } catch (Exception e) {
@@ -346,24 +322,26 @@ public class GuiServer {
             try {
                 String moduleKey = ctx.pathParam("moduleKey");
 
-                // Execute all tests in the module package (wildcard)
-                String packagePattern = "br.com.qasuite.pages." + moduleKey.toLowerCase().replace(" ", "_") + ".*Test";
+                DatabaseManager db = new DatabaseManager();
+                List<Map<String, Object>> tests = db.loadTests().stream()
+                    .filter(test -> moduleKey.equalsIgnoreCase(String.valueOf(test.get("module"))))
+                    .collect(Collectors.toList());
 
-                ProcessBuilder pb = new ProcessBuilder(
-                    MVN_CMD,
-                    "test",
-                    "-Dtest=" + packagePattern,
-                    "-o", // Offline mode
-                    "-q"  // Quiet
-                );
-                pb.directory(PROJECT_DIR.toFile());
-                pb.inheritIO();
-                pb.start(); // Start in background
+                if (tests.isEmpty()) {
+                    ctx.status(404).result("Nenhum teste encontrado para o modulo " + moduleKey);
+                    return;
+                }
+
+                if (tests.size() != 1) {
+                    ctx.status(409).result("Modulo possui " + tests.size() + " testes. Execute pelo botao do teste ou do submenu para evitar executar o fluxo errado.");
+                    return;
+                }
+
+                saveMetadataAndExecute(tests.get(0));
 
                 JsonObject response = new JsonObject();
                 response.addProperty("status", "started");
                 response.addProperty("module", moduleKey);
-                response.addProperty("testPattern", packagePattern);
                 response.addProperty("message", "Testes do módulo " + moduleKey + " iniciados em background.");
 
                 ctx.result(gson.toJson(response));
@@ -376,10 +354,67 @@ public class GuiServer {
         // Serve reports
         app.get("/reports", ctx -> {
             Path reportPath = Paths.get("output/reports/relatorio.html");
-            if (Files.exists(reportPath)) {
-                ctx.html(Files.readString(reportPath, java.nio.charset.StandardCharsets.UTF_8));
-            } else {
-                ctx.result("Relatório não encontrado. Execute os testes primeiro.");
+            try {
+                if (Files.exists(reportPath)) {
+                    byte[] bytes = Files.readAllBytes(reportPath);
+                    String html = new String(bytes, java.nio.charset.StandardCharsets.UTF_8);
+                    if (html.contains("\uFFFD")) {
+                        html = new String(bytes, java.nio.charset.StandardCharsets.ISO_8859_1);
+                    }
+                    ctx.contentType("text/html; charset=utf-8").result(html);
+                    return;
+                }
+
+                Path reportsDir = Paths.get("output/reports");
+                if (Files.exists(reportsDir)) {
+                    try (var stream = Files.list(reportsDir)) {
+                        var latest = stream
+                            .filter(path -> path.getFileName().toString().toLowerCase().endsWith(".html"))
+                            .sorted((a, b) -> {
+                                try {
+                                    return Files.getLastModifiedTime(b).compareTo(Files.getLastModifiedTime(a));
+                                } catch (Exception e) {
+                                    return 0;
+                                }
+                            })
+                            .findFirst()
+                            .orElse(null);
+                        if (latest != null) {
+                            byte[] bytes = Files.readAllBytes(latest);
+                            String html = new String(bytes, java.nio.charset.StandardCharsets.UTF_8);
+                            if (html.contains("\uFFFD")) {
+                                html = new String(bytes, java.nio.charset.StandardCharsets.ISO_8859_1);
+                            }
+                            ctx.contentType("text/html; charset=utf-8").result(html);
+                            return;
+                        }
+                    }
+                }
+
+                ctx.status(404).result("Relatório não encontrado. Execute os testes primeiro.");
+            } catch (Exception e) {
+                ctx.status(500).result("Erro ao carregar relatório: " + e.getMessage());
+                e.printStackTrace();
+            }
+        });
+
+        // Serve timeline report
+        app.get("/timeline-report", ctx -> {
+            Path reportPath = Paths.get("output/reports/timeline_report.html");
+            try {
+                if (Files.exists(reportPath)) {
+                    byte[] bytes = Files.readAllBytes(reportPath);
+                    String html = new String(bytes, java.nio.charset.StandardCharsets.UTF_8);
+                    if (html.contains("\uFFFD")) {
+                        html = new String(bytes, java.nio.charset.StandardCharsets.ISO_8859_1);
+                    }
+                    ctx.contentType("text/html; charset=utf-8").result(html);
+                    return;
+                }
+                ctx.status(404).result("Relatório não encontrado. Execute os testes primeiro.");
+            } catch (Exception e) {
+                ctx.status(500).result("Erro ao carregar relatório: " + e.getMessage());
+                e.printStackTrace();
             }
         });
 
@@ -458,15 +493,36 @@ public class GuiServer {
         app.post("/api/save-test", ctx -> {
             ctx.header("Access-Control-Allow-Origin", "*");
             try {
-                var test = gson.fromJson(ctx.body(), java.util.Map.class);
+                String body = ctx.body();
+                var test = gson.fromJson(body, java.util.Map.class);
+                System.out.println("[GuiServer] Salvando teste ID: " + test.get("id"));
+                System.out.println("[GuiServer] Nome: " + test.get("name"));
+                System.out.println("[GuiServer] Descricao recebida: " + test.get("description"));
+                System.out.println("[GuiServer] testType recebido: " + test.get("testType"));
                 DatabaseManager db = new DatabaseManager();
+                Object id = test.get("id");
+                if (id != null) {
+                    var existing = db.loadTest(String.valueOf(id));
+                    if (existing != null) {
+                        if (isBlank(test.get("module"))) {
+                            test.put("module", existing.get("module"));
+                        }
+                        if (isBlank(test.get("menu"))) {
+                            test.put("menu", existing.get("menu"));
+                        }
+                        if (isBlank(test.get("createdAt"))) {
+                            test.put("createdAt", existing.get("created_at"));
+                        }
+                    }
+                }
                 db.saveTest(test);
-                JsonObject response = new JsonObject();
-                response.addProperty("status", "success");
+                java.util.Map<String, String> response = new java.util.HashMap<>();
+                response.put("status", "success");
                 ctx.json(response);
             } catch (Exception e) {
-                ctx.status(500).result("Erro ao salvar teste: " + e.getMessage());
+                System.err.println("[GuiServer] ERRO ao salvar teste: " + e.getMessage());
                 e.printStackTrace();
+                ctx.status(500).result("Erro ao salvar teste: " + e.getMessage());
             }
         });
 
@@ -478,8 +534,8 @@ public class GuiServer {
                 String testId = (String) request.get("id");
                 DatabaseManager db = new DatabaseManager();
                 db.deleteTest(testId);
-                JsonObject response = new JsonObject();
-                response.addProperty("status", "success");
+                java.util.Map<String, String> response = new java.util.HashMap<>();
+                response.put("status", "success");
                 ctx.json(response);
             } catch (Exception e) {
                 ctx.status(500).result("Erro ao deletar teste: " + e.getMessage());
@@ -507,8 +563,8 @@ public class GuiServer {
                 var structure = gson.fromJson(ctx.body(), java.util.Map.class);
                 DatabaseManager db = new DatabaseManager();
                 db.saveMenuStructure(structure);
-                JsonObject response = new JsonObject();
-                response.addProperty("status", "success");
+                java.util.Map<String, String> response = new java.util.HashMap<>();
+                response.put("status", "success");
                 ctx.json(response);
             } catch (Exception e) {
                 ctx.status(500).result("Erro ao salvar estrutura: " + e.getMessage());
@@ -522,8 +578,11 @@ public class GuiServer {
             try {
                 DatabaseManager db = new DatabaseManager();
                 var config = db.loadConfig();
+                System.out.println("[GuiServer] /api/load-config - Configurações carregadas: " + config.size() + " itens");
+                System.out.println("[GuiServer] /api/load-config - Chaves: " + config.keySet());
                 ctx.json(config);
             } catch (Exception e) {
+                System.err.println("[GuiServer] Erro em /api/load-config: " + e.getMessage());
                 ctx.status(500).result("Erro ao carregar config: " + e.getMessage());
                 e.printStackTrace();
             }
@@ -534,14 +593,363 @@ public class GuiServer {
             ctx.header("Access-Control-Allow-Origin", "*");
             try {
                 var config = gson.fromJson(ctx.body(), java.util.Map.class);
+                System.out.println("[GuiServer] /api/save-config - Recebido: " + config.size() + " itens");
+                System.out.println("[GuiServer] Chaves recebidas: " + config.keySet());
                 DatabaseManager db = new DatabaseManager();
                 db.saveConfig(config);
-                JsonObject response = new JsonObject();
-                response.addProperty("status", "success");
+                java.util.Map<String, String> response = new java.util.HashMap<>();
+                response.put("status", "success");
                 ctx.json(response);
             } catch (Exception e) {
+                System.err.println("[GuiServer] Erro em /api/save-config: " + e.getMessage());
                 ctx.status(500).result("Erro ao salvar config: " + e.getMessage());
                 e.printStackTrace();
+            }
+        });
+
+        // API: OpenAI Config - Get current config (without API key)
+        app.get("/api/openai-config", ctx -> {
+            ctx.header("Access-Control-Allow-Origin", "*");
+            try {
+                br.com.qasuite.config.OpenAIConfig config = new br.com.qasuite.config.OpenAIConfig();
+                JsonObject response = new JsonObject();
+                response.addProperty("configured", config.isValid());
+                response.addProperty("model", config.getModel());
+                response.addProperty("apiUrl", config.getApiUrl());
+                response.addProperty("temperature", config.getTemperature());
+                response.addProperty("maxTokens", config.getMaxTokens());
+                // API key is masked for security
+                response.addProperty("apiKey", config.isValid() ? "********" + config.getApiKey().substring(Math.max(0, config.getApiKey().length() - 4)) : "");
+                ctx.json(response);
+            } catch (Exception e) {
+                ctx.status(500).result("Erro ao carregar config OpenAI: " + e.getMessage());
+                e.printStackTrace();
+            }
+        });
+
+        // API: OpenAI Config - Save config
+        app.post("/api/openai-config", ctx -> {
+            ctx.header("Access-Control-Allow-Origin", "*");
+            try {
+                JsonObject request = gson.fromJson(ctx.body(), JsonObject.class);
+                br.com.qasuite.config.OpenAIConfig config = new br.com.qasuite.config.OpenAIConfig();
+
+                if (request.has("apiKey") && !request.get("apiKey").getAsString().isEmpty()) {
+                    String apiKey = request.get("apiKey").getAsString();
+                    // Only update if not masked
+                    if (!apiKey.contains("********")) {
+                        config.setApiKey(apiKey);
+                    }
+                }
+                if (request.has("model")) {
+                    config.setModel(request.get("model").getAsString());
+                }
+                if (request.has("apiUrl")) {
+                    config.setApiUrl(request.get("apiUrl").getAsString());
+                }
+                if (request.has("temperature")) {
+                    config.setTemperature(request.get("temperature").getAsDouble());
+                }
+                if (request.has("maxTokens")) {
+                    config.setMaxTokens(request.get("maxTokens").getAsInt());
+                }
+
+                config.saveConfig();
+
+                JsonObject response = new JsonObject();
+                response.addProperty("status", "success");
+                response.addProperty("message", "OpenAI configuration saved");
+                response.addProperty("configured", config.isValid());
+                ctx.json(response);
+            } catch (Exception e) {
+                ctx.status(500).result("Erro ao salvar config OpenAI: " + e.getMessage());
+                e.printStackTrace();
+            }
+        });
+
+        app.get("/api/context7-config", ctx -> {
+            ctx.header("Access-Control-Allow-Origin", "*");
+            ctx.contentType("application/json");
+            ctx.result(gson.toJson(context7Cli.status()));
+        });
+
+        app.get("/api/context7/library", ctx -> {
+            ctx.header("Access-Control-Allow-Origin", "*");
+            String name = ctx.queryParam("name");
+            String query = ctx.queryParam("query");
+            if (name == null || name.isBlank() || query == null || query.isBlank()) {
+                ctx.status(400).result("Parâmetros obrigatórios: name, query");
+                return;
+            }
+            if (name.length() > 120 || query.length() > 600) {
+                ctx.status(400).result("Parâmetros muito longos");
+                return;
+            }
+            ctx.contentType("application/json");
+            ctx.result(gson.toJson(context7Cli.library(name, query)));
+        });
+
+        app.get("/api/context7/docs", ctx -> {
+            ctx.header("Access-Control-Allow-Origin", "*");
+            String libraryId = ctx.queryParam("libraryId");
+            String query = ctx.queryParam("query");
+            boolean research = "true".equalsIgnoreCase(ctx.queryParam("research"));
+            if (libraryId == null || libraryId.isBlank() || query == null || query.isBlank()) {
+                ctx.status(400).result("Parâmetros obrigatórios: libraryId, query");
+                return;
+            }
+            if (libraryId.length() > 160 || query.length() > 1200) {
+                ctx.status(400).result("Parâmetros muito longos");
+                return;
+            }
+            ctx.contentType("application/json");
+            ctx.result(gson.toJson(context7Cli.docs(libraryId, query, research)));
+        });
+
+        // API: Generate TestPlan from natural language description
+        app.post("/api/tests/generate", ctx -> {
+            ctx.header("Access-Control-Allow-Origin", "*");
+            try {
+                JsonObject request = gson.fromJson(ctx.body(), JsonObject.class);
+                String description = request.get("description").getAsString();
+                String testName = request.has("name") ? request.get("name").getAsString() : "Generated Test";
+                String module = request.has("module") ? request.get("module").getAsString() : "default";
+                String menu = request.has("menu") ? request.get("menu").getAsString() : "";
+
+                // Create IntentParser - uses config from file/env by default
+                IntentParserService parser = new IntentParserService();
+
+                // Check if configured
+                if (!parser.isConfigured()) {
+                    JsonObject error = new JsonObject();
+                    error.addProperty("error", true);
+                    error.addProperty("message", parser.getConfigError());
+                    error.addProperty("configured", false);
+                    ctx.status(400).json(error);
+                    return;
+                }
+
+                TestPlan plan = parser.parse(description, testName, module, menu);
+
+                // Return as JSON
+                ctx.json(gson.toJson(plan));
+            } catch (Exception e) {
+                ctx.status(500).result("Error generating test: " + e.getMessage());
+                e.printStackTrace();
+            }
+        });
+
+        // API: Execute test
+        app.post("/api/tests/execute", ctx -> {
+            ctx.header("Access-Control-Allow-Origin", "*");
+            try {
+                JsonObject request = gson.fromJson(ctx.body(), JsonObject.class);
+                String testId = request.get("testId").getAsString();
+
+                // Generate unique execution ID
+                String executionId = "exec_" + System.currentTimeMillis() + "_" + testId;
+
+                // Load test from database
+                DatabaseManager db = new DatabaseManager();
+                var testData = db.loadTest(testId);
+
+                if (testData == null) {
+                    ctx.status(404).result("Test not found: " + testId);
+                    return;
+                }
+
+                // Add executionId to test data
+                testData.put("executionId", executionId);
+
+                // Save metadata and execute via GenericTest
+                saveMetadataAndExecute(testData);
+
+                JsonObject response = new JsonObject();
+                response.addProperty("status", "started");
+                response.addProperty("testId", testId);
+                response.addProperty("executionId", executionId);
+                response.addProperty("websocketUrl", "ws://localhost:" + currentPort + "/ws/execution/" + executionId);
+                response.addProperty("message", "Test execution started. Connect to WebSocket for real-time updates.");
+                ctx.json(response);
+
+            } catch (Exception e) {
+                ctx.status(500).result("Error executing test: " + e.getMessage());
+                e.printStackTrace();
+            }
+        });
+
+        // API: Execute tests in parallel
+        app.post("/api/tests/execute-parallel", ctx -> {
+            ctx.header("Access-Control-Allow-Origin", "*");
+            try {
+                JsonObject request = gson.fromJson(ctx.body(), JsonObject.class);
+                JsonArray testIds = request.getAsJsonArray("testIds");
+                int maxParallel = request.has("maxParallel") ? request.get("maxParallel").getAsInt() : 3;
+
+                if (testIds == null || testIds.size() == 0) {
+                    ctx.status(400).result("No test IDs provided");
+                    return;
+                }
+
+                // Generate batch execution ID
+                String batchId = "batch_" + System.currentTimeMillis();
+
+                // Load all tests
+                DatabaseManager db = new DatabaseManager();
+                List<br.com.qasuite.domain.TestPlan> testPlans = new ArrayList<>();
+                List<String> testIdList = new ArrayList<>();
+
+                for (JsonElement elem : testIds) {
+                    String testId = elem.getAsString();
+                    var testData = db.loadTest(testId);
+                    if (testData != null && testData.containsKey("testData")) {
+                        Object testDataValue = testData.get("testData");
+                        String testDataJson = testDataValue instanceof String ? (String) testDataValue : gson.toJson(testDataValue);
+                        TestPlan plan = tryParseTestPlan(testDataJson, (String) testData.getOrDefault("name", "Test " + testId));
+                        if (plan != null) {
+                            testPlans.add(plan);
+                            testIdList.add(testId);
+                        }
+                    }
+                }
+
+                if (testPlans.isEmpty()) {
+                    ctx.status(400).result("No valid test plans found");
+                    return;
+                }
+
+                // Start parallel execution in background
+                CompletableFuture.runAsync(() -> {
+                    try {
+                        br.com.qasuite.core.ParallelExecutionEngine engine =
+                            new br.com.qasuite.core.ParallelExecutionEngine(Math.min(maxParallel, testPlans.size()));
+
+                        // Add tests
+                        for (int i = 0; i < testPlans.size(); i++) {
+                            engine.addTest(testIdList.get(i), testPlans.get(i), "chromium");
+                        }
+
+                        // Execute with progress
+                        engine.onProgress(progress -> {
+                            System.out.println("[Parallel] " + progress.completed + "/" + progress.total +
+                                " - " + progress.testId + ": " + progress.status);
+                        });
+
+                        Map<String, br.com.qasuite.core.ParallelExecutionEngine.TestResult> results = engine.executeAll();
+
+                        // Generate summary
+                        var summary = engine.generateSummary();
+                        System.out.println("[Parallel] Batch " + batchId + " completed: " +
+                            summary.passed + " passed, " + summary.failed + " failed, " +
+                            summary.partial + " partial");
+
+                        engine.shutdown();
+
+                    } catch (Exception e) {
+                        System.err.println("[Parallel] Batch " + batchId + " error: " + e.getMessage());
+                    }
+                });
+
+                JsonObject response = new JsonObject();
+                response.addProperty("status", "started");
+                response.addProperty("batchId", batchId);
+                response.addProperty("totalTests", testPlans.size());
+                response.addProperty("maxParallel", maxParallel);
+                response.addProperty("message", "Parallel execution started in background");
+                ctx.json(response);
+
+            } catch (Exception e) {
+                ctx.status(500).result("Error starting parallel execution: " + e.getMessage());
+                e.printStackTrace();
+            }
+        });
+
+        // API: Get parallel execution status
+        app.get("/api/parallel-execution/{batchId}", ctx -> {
+            ctx.header("Access-Control-Allow-Origin", "*");
+            String batchId = ctx.pathParam("batchId");
+
+            // Return status (in production, would query from a status store)
+            JsonObject response = new JsonObject();
+            response.addProperty("batchId", batchId);
+            response.addProperty("status", "running"); // or completed
+            ctx.json(response);
+        });
+
+        // API: Execute single test with visual mode option
+        app.post("/api/tests/execute-visual", ctx -> {
+            ctx.header("Access-Control-Allow-Origin", "*");
+            try {
+                JsonObject request = gson.fromJson(ctx.body(), JsonObject.class);
+                String testId = request.get("testId").getAsString();
+                boolean visualMode = request.has("visualMode") ? request.get("visualMode").getAsBoolean() : false;
+
+                // Load test
+                DatabaseManager db = new DatabaseManager();
+                var testData = db.loadTest(testId);
+
+                if (testData == null) {
+                    ctx.status(404).result("Test not found: " + testId);
+                    return;
+                }
+
+                // Generate execution ID
+                String executionId = "exec_" + System.currentTimeMillis() + "_" + testId;
+
+                // Save metadata with execution config
+                testData.put("executionId", executionId);
+                testData.put("visualMode", visualMode);
+
+                // Save execution config
+                ExecutionConfig execConfig = visualMode ? ExecutionConfig.visualMode() : ExecutionConfig.headlessMode();
+                if (request.has("slowMo")) {
+                    execConfig.setSlowMo(request.get("slowMo").getAsInt());
+                }
+                if (request.has("recordVideo")) {
+                    execConfig.setRecordVideo(request.get("recordVideo").getAsBoolean());
+                }
+
+                // Save config to file for test to read
+                Path configFile = DATA_DIR.resolve("execution_config_" + executionId + ".json");
+                Files.writeString(configFile, gson.toJson(execConfig));
+
+                // Save metadata and execute
+                saveMetadataAndExecute(testData);
+
+                JsonObject response = new JsonObject();
+                response.addProperty("status", "started");
+                response.addProperty("testId", testId);
+                response.addProperty("executionId", executionId);
+                response.addProperty("visualMode", visualMode);
+                response.addProperty("modeDescription", execConfig.getModeDescription());
+                response.addProperty("websocketUrl", "ws://localhost:" + currentPort + "/ws/execution/" + executionId);
+                response.addProperty("message", visualMode
+                    ? "Test execution started in VISUAL mode. Browser will open for you to follow."
+                    : "Test execution started in HEADLESS mode (fast).");
+                ctx.json(response);
+
+            } catch (Exception e) {
+                ctx.status(500).result("Error executing test: " + e.getMessage());
+                e.printStackTrace();
+            }
+        });
+
+        // API: Get execution config for a test
+        app.get("/api/execution-config/{executionId}", ctx -> {
+            ctx.header("Access-Control-Allow-Origin", "*");
+            String executionId = ctx.pathParam("executionId");
+
+            try {
+                Path configFile = DATA_DIR.resolve("execution_config_" + executionId + ".json");
+                if (Files.exists(configFile)) {
+                    String configJson = Files.readString(configFile);
+                    ctx.result(configJson);
+                } else {
+                    // Return default config
+                    ctx.json(gson.toJson(ExecutionConfig.headlessMode()));
+                }
+            } catch (Exception e) {
+                ctx.status(500).result("Error loading config: " + e.getMessage());
             }
         });
 
@@ -552,15 +960,150 @@ public class GuiServer {
                 JsonObject config = new JsonObject();
                 config.addProperty("status", "ok");
                 config.addProperty("version", "1.0.0");
-                config.addProperty("serverPort", PORT);
+                config.addProperty("serverPort", currentPort);
                 config.addProperty("projectDir", PROJECT_DIR.toString());
                 config.addProperty("dataDir", DATA_DIR.toString());
+                config.addProperty("parallelSupported", true);
+                config.addProperty("visualModeSupported", true);
                 ctx.result(gson.toJson(config));
             } catch (Exception e) {
                 ctx.status(500).result("Erro ao carregar configurações: " + e.getMessage());
                 e.printStackTrace();
             }
         });
+    }
+
+    private static void saveMetadataAndExecute(java.util.Map<String, Object> testData) {
+        try {
+            String testId = (String) testData.get("id");
+            String testName = (String) testData.get("name");
+            String module = (String) testData.get("module");
+            String menu = (String) testData.get("menu");
+            String description = (String) testData.get("description");
+            String testType = (String) testData.getOrDefault("testType", "smoke");
+            String priority = (String) testData.getOrDefault("priority", "Média");
+            String executionId = (String) testData.get("executionId");
+            Object visualMode = testData.get("visualMode");
+
+            // Create metadata JSON
+            JsonObject metadata = new JsonObject();
+            metadata.addProperty("id", testId);
+            metadata.addProperty("name", testName);
+            metadata.addProperty("module", module);
+            metadata.addProperty("menu", menu);
+            metadata.addProperty("description", description);
+            metadata.addProperty("testType", testType);
+            metadata.addProperty("priority", priority);
+            if (!isBlank(executionId)) {
+                metadata.addProperty("executionId", executionId);
+            }
+            if (visualMode instanceof Boolean) {
+                metadata.addProperty("visualMode", (Boolean) visualMode);
+            }
+
+            Object testDataValue = testData.get("testData");
+            String testDataJson = testDataValue instanceof String ? (String) testDataValue : (testDataValue != null ? gson.toJson(testDataValue) : null);
+            TestPlan plan = tryParseTestPlan(testDataJson, testName);
+            if (plan != null) {
+                metadata.addProperty("testData", gson.toJson(plan));
+            }
+
+            // Save to file
+            Path metadataFile = DATA_DIR.resolve("current_test_metadata.json");
+            Files.writeString(metadataFile, gson.toJson(metadata));
+            System.out.println("[GuiServer] Metadata saved to: " + metadataFile);
+
+            // Execute via Maven
+            executeMavenTest();
+
+        } catch (Exception e) {
+            System.err.println("[GuiServer] Error saving metadata: " + e.getMessage());
+            e.printStackTrace();
+        }
+    }
+
+    private static TestPlan tryParseTestPlan(String rawJson, String fallbackName) {
+        if (rawJson == null) {
+            return null;
+        }
+        String trimmed = rawJson.trim();
+        if (trimmed.isEmpty() || "{}".equals(trimmed) || "null".equalsIgnoreCase(trimmed)) {
+            return null;
+        }
+
+        try {
+            JsonElement element = JsonParser.parseString(trimmed);
+
+            if (element.isJsonPrimitive() && element.getAsJsonPrimitive().isString()) {
+                String inner = element.getAsString();
+                if (inner != null && !inner.trim().isEmpty()) {
+                    element = JsonParser.parseString(inner.trim());
+                }
+            }
+
+            if (element.isJsonArray()) {
+                JsonObject wrapper = new JsonObject();
+                wrapper.add("steps", element.getAsJsonArray());
+                TestPlan plan = gson.fromJson(wrapper, TestPlan.class);
+                plan.setName(fallbackName);
+                return plan.getTotalSteps() > 0 ? plan : null;
+            }
+
+            if (element.isJsonObject()) {
+                JsonObject obj = element.getAsJsonObject();
+
+                if (obj.has("testData") && obj.get("testData").isJsonPrimitive() && obj.get("testData").getAsJsonPrimitive().isString()) {
+                    String inner = obj.get("testData").getAsString();
+                    return tryParseTestPlan(inner, fallbackName);
+                }
+
+                if (obj.has("steps") && obj.get("steps").isJsonPrimitive() && obj.get("steps").getAsJsonPrimitive().isString()) {
+                    String inner = obj.get("steps").getAsString();
+                    JsonElement innerElem = JsonParser.parseString(inner.trim());
+                    JsonObject wrapper = new JsonObject();
+                    wrapper.add("steps", innerElem.isJsonArray() ? innerElem.getAsJsonArray() : new JsonArray());
+                    TestPlan plan = gson.fromJson(wrapper, TestPlan.class);
+                    plan.setName(fallbackName);
+                    return plan.getTotalSteps() > 0 ? plan : null;
+                }
+
+                TestPlan plan = gson.fromJson(obj, TestPlan.class);
+                plan.setName(fallbackName);
+                return plan.getTotalSteps() > 0 ? plan : null;
+            }
+        } catch (Exception ignored) {
+            return null;
+        }
+
+        return null;
+    }
+
+    private static void executeMavenTest() {
+        try {
+            System.out.println("[GuiServer] Starting test execution...");
+
+            ProcessBuilder pb = new ProcessBuilder(
+                    MVN_CMD, "test", "-Dtest=GenericTest", "-q"
+            );
+            pb.directory(PROJECT_DIR.toFile());
+            try {
+                Path playwrightBrowsersDir = DATA_DIR.toAbsolutePath().resolve("ms-playwright");
+                Files.createDirectories(playwrightBrowsersDir);
+                pb.environment().put("PLAYWRIGHT_BROWSERS_PATH", playwrightBrowsersDir.toString());
+            } catch (Exception ignored) {
+            }
+            pb.inheritIO();
+
+            Process process = pb.start();
+            System.out.println("[GuiServer] Test process started");
+
+        } catch (Exception e) {
+            System.err.println("[GuiServer] Error executing test: " + e.getMessage());
+        }
+    }
+
+    private static boolean isBlank(Object value) {
+        return value == null || String.valueOf(value).trim().isEmpty();
     }
 
     private static String generateMockFeature(String module, String menu, String testName, String description) {

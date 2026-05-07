@@ -5,7 +5,7 @@ import com.microsoft.playwright.Page;
 import com.microsoft.playwright.options.LoadState;
 
 /**
- * Page Object para a tela de Login do Sinnc Saúde.
+ * Page Object para a tela de Login do sistema.
  */
 public class LoginPage {
 

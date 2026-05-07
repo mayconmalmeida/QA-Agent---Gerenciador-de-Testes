@@ -4,9 +4,12 @@ import io.github.cdimascio.dotenv.Dotenv;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Properties;
 
 /**
@@ -17,6 +20,7 @@ public class ConfigLoader {
 
     private static final Properties properties = new Properties();
     private static final Dotenv dotenv;
+    private static final Map<String, String> envMap = new HashMap<>();
     private static boolean loaded = false;
 
     static {
@@ -25,15 +29,29 @@ public class ConfigLoader {
         try {
             Path envPath = Paths.get(".env");
             if (Files.exists(envPath)) {
-                tempDotenv = Dotenv.configure()
-                        .directory(".")
-                        .ignoreIfMissing()
-                        .load();
+                // Lê manualmente para remover BOM
+                String content = new String(Files.readAllBytes(envPath), StandardCharsets.UTF_8);
+                // Remove BOM se presente
+                if (content.startsWith("\uFEFF")) {
+                    content = content.substring(1);
+                }
+                // Parse manual das linhas
+                for (String line : content.split("\n")) {
+                    line = line.trim();
+                    if (line.isEmpty() || line.startsWith("#")) continue;
+                    int eq = line.indexOf('=');
+                    if (eq > 0) {
+                        String key = line.substring(0, eq).trim();
+                        String value = line.substring(eq + 1).trim();
+                        envMap.put(key, value);
+                    }
+                }
+                System.out.println("[ConfigLoader] .env carregado manualmente com " + envMap.size() + " variáveis");
             }
         } catch (Exception e) {
-            System.out.println("[ConfigLoader] Arquivo .env não encontrado ou inválido: " + e.getMessage());
+            System.out.println("[ConfigLoader] Erro ao carregar .env: " + e.getMessage());
         }
-        dotenv = tempDotenv;
+        dotenv = null; // Não usamos mais o Dotenv
         
         // Carrega configurações
         loadConfig();
@@ -42,16 +60,28 @@ public class ConfigLoader {
     private static void loadConfig() {
         if (loaded) return;
 
-        try (InputStream input = ConfigLoader.class.getClassLoader()
-                .getResourceAsStream("config.properties")) {
-            if (input != null) {
+        // Primeiro tenta carregar de config.properties na raiz (onde o painel web salva)
+        Path rootConfigPath = Paths.get("config.properties");
+        if (Files.exists(rootConfigPath)) {
+            try (InputStream input = Files.newInputStream(rootConfigPath)) {
                 properties.load(input);
-                System.out.println("[ConfigLoader] config.properties carregado com sucesso");
-            } else {
-                System.err.println("[ConfigLoader] Não foi possível encontrar config.properties");
+                System.out.println("[ConfigLoader] config.properties carregado da raiz: " + rootConfigPath.toAbsolutePath());
+            } catch (IOException e) {
+                System.err.println("[ConfigLoader] Erro ao carregar config.properties da raiz: " + e.getMessage());
             }
-        } catch (IOException e) {
-            System.err.println("[ConfigLoader] Erro ao carregar config.properties: " + e.getMessage());
+        } else {
+            // Fallback: carrega do classpath (src/test/resources)
+            try (InputStream input = ConfigLoader.class.getClassLoader()
+                    .getResourceAsStream("config.properties")) {
+                if (input != null) {
+                    properties.load(input);
+                    System.out.println("[ConfigLoader] config.properties carregado do classpath");
+                } else {
+                    System.err.println("[ConfigLoader] Não foi possível encontrar config.properties");
+                }
+            } catch (IOException e) {
+                System.err.println("[ConfigLoader] Erro ao carregar config.properties: " + e.getMessage());
+            }
         }
 
         loaded = true;
@@ -67,12 +97,10 @@ public class ConfigLoader {
             return envValue;
         }
 
-        // 2. Verifica .env
-        if (dotenv != null) {
-            String dotenvValue = dotenv.get(key.toUpperCase().replace(".", "_"));
-            if (dotenvValue != null && !dotenvValue.isEmpty()) {
-                return dotenvValue;
-            }
+        // 2. Verifica .env (carregado manualmente)
+        String dotenvValue = envMap.get(key.toUpperCase().replace(".", "_"));
+        if (dotenvValue != null && !dotenvValue.isEmpty()) {
+            return dotenvValue;
         }
 
         // 3. Retorna do config.properties
@@ -140,7 +168,7 @@ public class ConfigLoader {
     // ==================== Propriedades específicas ====================
 
     public static String getBaseUrl() {
-        return get("base.url", "http://10.8.0.20/ViewLogin");
+        return get("base.url", "https://example.test/login");
     }
 
     public static String getAmbiente() {
@@ -169,6 +197,10 @@ public class ConfigLoader {
 
     public static int getTimeoutPadraoMs() {
         return getInt("timeout.default", 30) * 1000; // Convert seconds to milliseconds
+    }
+
+    public static int getNavigationTimeoutMs() {
+        return getInt("timeout.navigation", 20) * 1000; // 20s default for navigation
     }
 
     public static boolean isScreenshotEmFalha() {
@@ -209,8 +241,8 @@ public class ConfigLoader {
 
     public static String getAnthropicApiKey() {
         String key = System.getenv("ANTHROPIC_API_KEY");
-        if (key == null && dotenv != null) {
-            key = dotenv.get("ANTHROPIC_API_KEY");
+        if (key == null || key.isEmpty()) {
+            key = envMap.get("ANTHROPIC_API_KEY");
         }
         return key;
     }

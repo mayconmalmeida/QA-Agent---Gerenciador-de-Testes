@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Limpar LocalStorage - QA Agent</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 50px; text-align: center; }
+        button { padding: 20px 40px; font-size: 18px; cursor: pointer; background: #e74c3c; color: white; border: none; border-radius: 5px; }
+        button:hover { background: #c0392b; }
+        .success { color: #27ae60; font-size: 20px; margin-top: 20px; }
+        .info { color: #7f8c8d; margin: 20px 0; }
+    </style>
+</head>
+<body>
+    <h1>Limpar Dados do Navegador</h1>
+    <p class="info">Clique no botão abaixo para remover todos os dados antigos do localStorage.<br>
+    Isso fará o sistema usar apenas o banco de dados SQLite do servidor Java (porta 8080).</p>
+    
+    <button onclick="clearAll()">Limpar Todos os Dados</button>
+    
+    <div id="result"></div>
+    
+    <script>
+        function clearAll() {
+            // Limpa todo o localStorage
+            localStorage.clear();
+            
+            document.getElementById('result').innerHTML = 
+                '<p class="success">✅ Dados limpos com sucesso!</p>' +
+                '<p>Agora acesse: <a href="http://localhost:8080">http://localhost:8080</a></p>' +
+                '<p><strong>Importante:</strong> Pare o servidor Python (porta 8081) se estiver rodando.</p>';
+        }
+    </script>
+</body>
+</html>

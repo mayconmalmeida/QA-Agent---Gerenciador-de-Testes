@@ -1,5 +1,5 @@
 #!/usr/bin/env pwsh
-# Sinnc Saúde - Roda testes de Regressão
+# QA Agent - Roda testes de Regressão
 # Script para executar suite completa de testes de regressão
 
 $ErrorActionPreference = "Stop"

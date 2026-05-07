@@ -1,0 +1,57 @@
+{
+  "project": {
+    "name": "QA Agent - Gerenciador de Testes",
+    "description": "Sistema completo de automação de testes end-to-end com Java, Playwright, JUnit 5, Javalin server e interface web. Inclui geração automática de testes via IA, execução com Playwright, relatórios HTML e persistência em SQLite.",
+    "language": "java",
+    "framework": "javalin"
+  },
+  "mode": "mcp",
+  "indexing": {
+    "include": [
+      "src/**/*.java",
+      "gui/**/*.js",
+      "gui/**/*.html",
+      "gui/**/*.css",
+      "pom.xml",
+      "src/test/resources/**/*.properties",
+      "src/test/resources/**/*.json",
+      "README.md",
+      "*.md"
+    ],
+    "exclude": [
+      "target/**",
+      "node_modules/**",
+      "output/**",
+      "data/**",
+      ".git/**",
+      "*.log",
+      "*.tmp"
+    ]
+  },
+  "context": {
+    "key_files": [
+      "src/main/java/br/com/qasuite/server/GuiServer.java",
+      "src/main/java/br/com/qasuite/server/DatabaseManager.java",
+      "gui/app.js",
+      "src/test/java/br/com/qasuite/config/BaseTest.java",
+      "src/test/java/br/com/qasuite/config/BrowserFactory.java",
+      "src/test/java/br/com/qasuite/config/ConfigLoader.java",
+      "pom.xml",
+      "src/test/resources/config.properties"
+    ],
+    "important_patterns": [
+      "br.com.qasuite",
+      "Playwright",
+      "SQLite",
+      "Javalin",
+      "JUnit 5",
+      "Page Object",
+      "DevExpress"
+    ]
+  },
+  "preferences": {
+    "auto_index": true,
+    "index_on_startup": false,
+    "max_results": 10
+  }
+}

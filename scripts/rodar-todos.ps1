@@ -1,5 +1,5 @@
 #!/usr/bin/env pwsh
-# Sinnc Saúde - Roda todos os testes
+# QA Agent - Roda todos os testes
 # Script para executar suite completa (smoke + regression + critico)
 
 $ErrorActionPreference = "Stop"

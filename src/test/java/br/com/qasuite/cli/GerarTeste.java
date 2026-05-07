@@ -83,7 +83,7 @@ public class GerarTeste {
     private static void exibirCabecalho() {
         System.out.println();
         System.out.println("╔══════════════════════════════════════╗");
-        System.out.println("║   Sinnc Saúde — Gerador de Testes   ║");
+        System.out.println("║      QA Agent — Gerador de Testes   ║");
         System.out.println("╚══════════════════════════════════════╝");
         System.out.println();
     }

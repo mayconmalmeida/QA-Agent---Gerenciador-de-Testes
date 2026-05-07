@@ -25,8 +25,8 @@ public class AgentIA {
     }
 
     private static final String SYSTEM_PROMPT = """
-            Você é um SDET especialista em sistemas hospitalares. O sistema Sinnc Saúde 
-            é uma aplicação web hospitalar brasileira (SUS/convênios). Gere artefatos de 
+            Você é um SDET especialista em sistemas de saúde. O sistema alvo 
+            é uma aplicação web brasileira (SUS/convênios). Gere artefatos de 
             QA profissionais em português (pt-BR) considerando: LGPD, dados sensíveis de 
             pacientes, regras ANS/TISS, criticidade de prontuários e fluxos clínicos.
             
@@ -129,7 +129,7 @@ public class AgentIA {
 
     private String construirPromptUsuario(DescricaoTeste descricao) {
         StringBuilder sb = new StringBuilder();
-        sb.append("Gere artefatos de teste para o seguinte requisito do sistema Sinnc Saúde:\n\n");
+        sb.append("Gere artefatos de teste para o seguinte requisito do sistema:\n\n");
         sb.append("MÓDULO: ").append(descricao.getModulo()).append("\n");
         sb.append("REQUISITO: ").append(descricao.getRequisito()).append("\n");
         sb.append("PRIORIDADE: ").append(descricao.getPrioridade()).append("\n");

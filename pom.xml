@@ -178,7 +178,7 @@
                             <arguments>
                                 <argument>-cp</argument>
                                 <classpath/>
-                                <argument>br.com.sinncosaude.server.GuiServer</argument>
+                                <argument>br.com.qasuite.server.GuiServer</argument>
                             </arguments>
                         </configuration>
                     </execution>

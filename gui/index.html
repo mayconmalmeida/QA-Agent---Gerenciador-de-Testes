@@ -7,7 +7,7 @@
     <link rel="icon" type="image/x-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🤖</text></svg>">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="styles/index.css">
+    <link rel="stylesheet" href="styles/index.css?v=6">
 </head>
 <body>
     <div class="app-root">
@@ -15,29 +15,72 @@
         <div class="sidebar">
             <!-- Sidebar Brand -->
             <div class="sidebar-brand">
-                <img src="logo.png" alt="Logo" class="sidebar-brand-logo">
-                <div class="sidebar-brand-name">Gerenciador de Testes</div>
+                <div class="sidebar-brand-logo-shell">
+                    <img src="logo.png" alt="Logo" class="sidebar-brand-logo">
+                </div>
+                <div>
+                    <div class="sidebar-brand-name">QA Agent</div>
+                    <div class="sidebar-brand-subtitle">Automação Inteligente</div>
+                </div>
             </div>
             
             <!-- Main Navigation -->
             <div class="sidebar-section">
                 <div class="sidebar-section-label">Menu Principal</div>
                 <button onclick="showDashboard()" class="nav-item active" id="nav-dashboard">
-                    <i class="fas fa-chart-line"></i>
+                    <i class="far fa-compass"></i>
                     <span>Dashboard</span>
                 </button>
                 <button onclick="showTestList()" class="nav-item" id="nav-tests">
-                    <i class="fas fa-vial"></i>
+                    <i class="far fa-square-check"></i>
                     <span>Testes</span>
                 </button>
                 <button onclick="showExecutions()" class="nav-item" id="nav-executions">
-                    <i class="fas fa-play-circle"></i>
+                    <i class="far fa-circle-play"></i>
                     <span>Execuções</span>
+                </button>
+                <button onclick="showDrafts()" class="nav-item" id="nav-drafts">
+                    <i class="far fa-pen-to-square"></i>
+                    <span>Rascunhos</span>
+                </button>
+                <button onclick="toggleSection('modules-section', this)" class="nav-item" id="nav-modules">
+                    <i class="far fa-object-group"></i>
+                    <span>Módulos</span>
+                    <i class="fas fa-chevron-down sidebar-inline-chevron"></i>
+                </button>
+                <div class="sidebar-nested hidden" id="modules-section">
+                    <div id="modulesList">
+                        <!-- Modulos serao carregados aqui -->
+                    </div>
+                </div>
+                <button onclick="showCoverage()" class="nav-item" id="nav-coverage">
+                    <i class="far fa-eye"></i>
+                    <span>Cobertura</span>
+                </button>
+                <button onclick="openReports()" class="nav-item" id="nav-reports">
+                    <i class="far fa-file-lines"></i>
+                    <span>Relatórios</span>
+                </button>
+                <button onclick="showAlert('Agendamentos serão exibidos em uma próxima versão.', 'info')" class="nav-item">
+                    <i class="far fa-calendar"></i>
+                    <span>Agendamentos</span>
+                </button>
+                <button onclick="showEnvironments()" class="nav-item" id="nav-environments">
+                    <i class="far fa-window-restore"></i>
+                    <span>Ambientes</span>
+                </button>
+                <button onclick="showAlerts()" class="nav-item" id="nav-alerts">
+                    <i class="far fa-bell"></i>
+                    <span>Alertas</span>
+                </button>
+                <button onclick="showConfigForm()" class="nav-item" id="nav-config-shortcut">
+                    <i class="far fa-sun"></i>
+                    <span>Configurações</span>
                 </button>
             </div>
             
             <!-- Configuration - Collapsible -->
-            <div class="sidebar-section">
+            <div class="sidebar-section legacy-config-section">
                 <div class="sidebar-module">
                     <div class="sidebar-module-header open" onclick="toggleSection('config-section', this)">
                         <span>Configuração</span>
@@ -55,16 +98,21 @@
             </div>
             
             <!-- Modules - Collapsible -->
-            <div class="sidebar-section" style="flex: 1;">
+            <div class="sidebar-section sidebar-nested hidden legacy-modules-section" style="flex: 1;">
                 <div class="sidebar-section-label">Módulos</div>
-                <div id="modulesList">
+                <div id="legacyModulesList">
                     <!-- Módulos serão carregados aqui -->
                 </div>
             </div>
             
             <!-- Sidebar Footer -->
             <div class="sidebar-footer">
-                <i class="fas fa-heart" style="color: var(--red);"></i>
+                <div class="sidebar-avatar">A</div>
+                <div class="sidebar-user-meta">
+                    <strong>Administrador</strong>
+                    <span>admin@qaagent.com</span>
+                </div>
+                <i class="fas fa-chevron-right"></i>
             </div>
         </div>
         
@@ -77,6 +125,11 @@
                     <div id="pageSubtitle" class="topbar-subtitle">Visão geral dos testes automatizados</div>
                 </div>
                 <div class="topbar-actions">
+                    <button class="btn-topbar period">
+                        <i class="far fa-calendar"></i>
+                        Últimos 7 dias
+                        <i class="fas fa-chevron-down"></i>
+                    </button>
                     <button onclick="runAllTests()" class="btn-topbar">
                         <i class="fas fa-play"></i>
                         Executar Todos
@@ -93,6 +146,167 @@
             <div class="main-content">
                 <!-- Dashboard View -->
                 <div id="dashboardView">
+                    <section class="executive-hero">
+                        <div class="executive-hero-main">
+                            <div class="hero-kicker">Centro executivo de qualidade</div>
+                            <h1>QA Automation Center</h1>
+                            <p>Monitoramento inteligente de testes automatizados</p>
+                            <div class="hero-meta-row">
+                                <span class="env-pill" id="dashboardEnvironment">LOCAL</span>
+                                <span class="hero-meta"><i class="fas fa-clock"></i> <span id="dashboardLastExecution">Última execução: sem registros</span></span>
+                                <span class="hero-meta"><i class="fas fa-circle-nodes"></i> Executor <strong id="dashboardExecutorStatus">online</strong></span>
+                                <span class="hero-meta"><i class="fas fa-brain"></i> IA ativa</span>
+                            </div>
+                        </div>
+                        <div class="automation-health-card">
+                            <div class="health-ring" id="automationHealthRing">
+                                <span id="automationHealthScore">0%</span>
+                            </div>
+                            <div>
+                                <div class="health-title">Saúde Global da Automação</div>
+                                <div class="health-subtitle" id="automationHealthText">Aguardando dados</div>
+                                <div class="health-status stable" id="automationHealthStatus">
+                                    <i class="fas fa-circle"></i>
+                                    Estável
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+
+                    <section class="executive-kpi-grid" id="dashboardKpiGrid">
+                        <div class="dashboard-skeleton"></div>
+                        <div class="dashboard-skeleton"></div>
+                        <div class="dashboard-skeleton"></div>
+                        <div class="dashboard-skeleton"></div>
+                    </section>
+
+                    <section class="executive-grid">
+                        <div class="analytics-panel large">
+                            <div class="analytics-panel-header">
+                                <div>
+                                    <div class="analytics-title">Execuções por Dia</div>
+                                    <div class="analytics-subtitle">Últimos 7 dias por resultado</div>
+                                </div>
+                                <span class="panel-chip">Linha / área</span>
+                            </div>
+                            <div class="chart-wrap"><canvas id="executionsTrendChart"></canvas></div>
+                        </div>
+
+                        <div class="analytics-panel">
+                            <div class="analytics-panel-header">
+                                <div>
+                                    <div class="analytics-title">Distribuição por Status</div>
+                                    <div class="analytics-subtitle">Sucesso, falha e cancelamento</div>
+                                </div>
+                            </div>
+                            <div class="chart-wrap compact"><canvas id="statusDonutChart"></canvas></div>
+                        </div>
+
+                        <div class="analytics-panel">
+                            <div class="analytics-panel-header">
+                                <div>
+                                    <div class="analytics-title">Testes por Módulo</div>
+                                    <div class="analytics-subtitle">Volume e risco por frente</div>
+                                </div>
+                            </div>
+                            <div class="chart-wrap"><canvas id="moduleBarChart"></canvas></div>
+                        </div>
+
+                        <div class="analytics-panel">
+                            <div class="analytics-panel-header">
+                                <div>
+                                    <div class="analytics-title">Performance de Execução</div>
+                                    <div class="analytics-subtitle">Testes mais lentos e média</div>
+                                </div>
+                                <span class="panel-chip">Tempo médio</span>
+                            </div>
+                            <div class="chart-wrap"><canvas id="performanceChart"></canvas></div>
+                        </div>
+                    </section>
+
+                    <section class="dashboard-lower-grid">
+                        <div class="analytics-panel recent-executions-panel">
+                            <div class="analytics-panel-header">
+                                <div>
+                                    <div class="analytics-title">Execuções Recentes</div>
+                                    <div class="analytics-subtitle">Operação, estabilidade e rastreabilidade</div>
+                                </div>
+                                <button onclick="showExecutions()" class="panel-action">Ver histórico</button>
+                            </div>
+
+                            <div class="table-toolbar">
+                                <div class="table-search">
+                                    <i class="fas fa-search"></i>
+                                    <input id="dashboardExecutionSearch" oninput="dashboardSetRecentSearch(this.value)" placeholder="Buscar teste, módulo ou responsável">
+                                </div>
+                                <select id="dashboardExecutionFilter" onchange="dashboardSetRecentFilter(this.value)">
+                                    <option value="all">Todos os status</option>
+                                    <option value="success">Sucesso</option>
+                                    <option value="failed">Falha</option>
+                                    <option value="running">Em execução</option>
+                                    <option value="cancelled">Cancelado</option>
+                                </select>
+                            </div>
+
+                            <div class="executive-table-wrap">
+                                <table class="executive-table">
+                                    <thead>
+                                        <tr>
+                                            <th onclick="dashboardSortRecent('testName')">Nome do teste</th>
+                                            <th onclick="dashboardSortRecent('module')">Módulo</th>
+                                            <th>Tipo</th>
+                                            <th onclick="dashboardSortRecent('status')">Status</th>
+                                            <th onclick="dashboardSortRecent('duration')">Duração</th>
+                                            <th onclick="dashboardSortRecent('timestamp')">Última execução</th>
+                                            <th>Responsável</th>
+                                            <th>Ambiente</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="dashboardRecentExecutionsBody"></tbody>
+                                </table>
+                            </div>
+                            <div class="table-pagination">
+                                <span id="dashboardPaginationInfo">0 registros</span>
+                                <div>
+                                    <button onclick="dashboardChangeRecentPage(-1)" class="pagination-btn">Anterior</button>
+                                    <button onclick="dashboardChangeRecentPage(1)" class="pagination-btn">Próxima</button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <aside class="dashboard-side-stack">
+                            <div class="analytics-panel insights-panel">
+                                <div class="analytics-panel-header">
+                                    <div>
+                                        <div class="analytics-title">Alertas e Insights</div>
+                                        <div class="analytics-subtitle">Sinais para gestão estratégica</div>
+                                    </div>
+                                </div>
+                                <div id="dashboardInsightsList" class="insights-list"></div>
+                            </div>
+
+                            <div class="ai-intelligence-panel">
+                                <div class="ai-panel-header">
+                                    <div>
+                                        <div class="ai-kicker">QA Inteligente</div>
+                                        <div class="ai-title">Motor de Decisão com IA</div>
+                                    </div>
+                                    <span class="ai-status"><i class="fas fa-circle"></i> ativo</span>
+                                </div>
+                                <div class="ai-metrics-grid" id="dashboardAiMetrics"></div>
+                            </div>
+
+                            <div class="analytics-panel operations-panel">
+                                <div class="analytics-panel-header">
+                                    <div>
+                                        <div class="analytics-title">Timeline Operacional</div>
+                                        <div class="analytics-subtitle">Eventos e mini logs em tempo real</div>
+                                    </div>
+                                </div>
+                                <div id="dashboardTimeline" class="execution-timeline"></div>
+                            </div>
+                        </aside>
+                    </section>
                     <!-- Metric Cards Grid -->
                     <div class="metrics-grid">
                         <div class="metric-card blue" onclick="showAllTests()">
@@ -201,13 +415,25 @@
                         <div class="panel-body">
                             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">
                                 <div class="form-group">
-                                    <label class="form-label">Módulo</label>
+                                    <div style="display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 6px;">
+                                        <label class="form-label" style="margin-bottom: 0;">Módulo</label>
+                                        <button type="button" onclick="showMenuEditor()" class="btn-secondary" style="padding: 6px 10px;">
+                                            <i class="fas fa-sitemap"></i>
+                                            <span>Editar</span>
+                                        </button>
+                                    </div>
                                     <select id="moduleSelect" class="input" onchange="loadMenus()">
                                         <option value="">Selecione um módulo</option>
                                     </select>
                                 </div>
                                 <div class="form-group">
-                                    <label class="form-label">Menu</label>
+                                    <div style="display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 6px;">
+                                        <label class="form-label" style="margin-bottom: 0;">Menu</label>
+                                        <button type="button" onclick="showMenuEditor()" class="btn-secondary" style="padding: 6px 10px;">
+                                            <i class="fas fa-sitemap"></i>
+                                            <span>Editar</span>
+                                        </button>
+                                    </div>
                                     <select id="menuSelect" class="input" disabled>
                                         <option value="">Selecione um menu</option>
                                     </select>
@@ -355,24 +581,24 @@
                             </button>
                         </div>
                         <div class="panel-body">
-                        
+                        <form onsubmit="saveConfig(); return false;">
                         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px;">
                             <div>
                                 <h4 style="font-size: 14px; font-weight: 600; color: var(--text-primary); margin-bottom: 16px;">Configurações de Acesso</h4>
                                 <div class="form-group">
                                     <label class="form-label">URL Base do Sistema</label>
-                                    <input type="url" id="baseUrl" placeholder="https://exemplo.com/sistema/login" class="input">
+                                    <input type="url" id="baseUrl" placeholder="https://exemplo.com/sistema/login" class="input" autocomplete="url">
                                     <p style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">URL completa de acesso ao sistema</p>
                                 </div>
 
                                 <div class="form-group">
                                     <label class="form-label">Usuário</label>
-                                    <input type="text" id="username" placeholder="admin" class="input">
+                                    <input type="text" id="username" placeholder="admin" class="input" autocomplete="username">
                                 </div>
 
                                 <div class="form-group">
                                     <label class="form-label">Senha</label>
-                                    <input type="password" id="password" placeholder="****" class="input">
+                                    <input type="password" id="password" placeholder="****" class="input" autocomplete="current-password">
                                 </div>
                             </div>
 
@@ -404,6 +630,57 @@
                                 </div>
                             </div>
                         </div>
+                        </form>
+
+                        <div style="margin-top: 24px; padding: 16px; background: var(--panel-bg); border: 1px solid var(--border-color); border-radius: var(--radius-md);">
+                            <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px;">
+                                <h4 style="font-size: 14px; font-weight: 600; color: var(--text-primary); margin: 0;">Context7</h4>
+                                <div style="display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-muted);">
+                                    <span id="context7Configured">Status: -</span>
+                                    <span id="context7ApiKeyMasked"></span>
+                                </div>
+                            </div>
+
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                                <div>
+                                    <div class="form-group">
+                                        <label class="form-label">Resolver Library ID</label>
+                                        <input type="text" id="context7LibraryName" placeholder="ex.: react, nextjs, playwright" class="input" autocomplete="off">
+                                        <input type="text" id="context7LibraryQuery" placeholder="Pergunta/intent (obrigatório)" class="input" autocomplete="off" style="margin-top: 8px;">
+                                        <div style="display: flex; gap: 8px; margin-top: 10px;">
+                                            <button type="button" onclick="context7LookupLibrary()" class="btn-secondary">
+                                                <i class="fas fa-search"></i>
+                                                <span>Buscar</span>
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <div class="form-group">
+                                        <label class="form-label">Consultar Docs</label>
+                                        <input type="text" id="context7LibraryId" placeholder="ex.: /vercel/next.js" class="input" autocomplete="off">
+                                        <input type="text" id="context7DocsQuery" placeholder="Pergunta/intent (obrigatório)" class="input" autocomplete="off" style="margin-top: 8px;">
+                                        <label style="display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-muted); margin-top: 10px;">
+                                            <input type="checkbox" id="context7Research" />
+                                            <span>Usar --research</span>
+                                        </label>
+                                        <div style="display: flex; gap: 8px; margin-top: 10px;">
+                                            <button type="button" onclick="context7GetDocs()" class="btn-secondary">
+                                                <i class="fas fa-book"></i>
+                                                <span>Consultar</span>
+                                            </button>
+                                            <button type="button" onclick="context7ClearOutput()" class="btn-secondary">
+                                                <i class="fas fa-eraser"></i>
+                                                <span>Limpar</span>
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <pre id="context7Output" style="margin-top: 12px; max-height: 320px; overflow: auto; padding: 12px; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: var(--radius-sm); font-size: 12px; color: var(--text-primary); white-space: pre-wrap;"></pre>
+                        </div>
 
                         <div style="margin-top: 24px; padding: 16px; background: var(--amber-bg); border: 1px solid #FDE68A; border-radius: var(--radius-md);">
                             <div style="display: flex; align-items: flex-start; gap: 8px;">
@@ -419,6 +696,70 @@
                         </div>
                     </div>
                 </div>
+                
+                <!-- Coverage View -->
+                <div id="coverageView" class="hidden">
+                    <div class="analytics-page-grid">
+                        <div class="analytics-panel">
+                            <div class="analytics-panel-header">
+                                <div>
+                                    <div class="analytics-title">Cobertura por Modulo</div>
+                                    <div class="analytics-subtitle">Distribuicao dos testes automatizados por area</div>
+                                </div>
+                            </div>
+                            <div id="coverageModuleGrid" class="insights-list"></div>
+                        </div>
+                        <div class="analytics-panel">
+                            <div class="analytics-panel-header">
+                                <div>
+                                    <div class="analytics-title">Resumo de Cobertura</div>
+                                    <div class="analytics-subtitle">Indicadores de maturidade da automacao</div>
+                                </div>
+                            </div>
+                            <div id="coverageSummaryGrid" class="ai-metrics-grid"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Alerts View -->
+                <div id="alertsView" class="hidden">
+                    <div class="analytics-panel">
+                        <div class="analytics-panel-header">
+                            <div>
+                                <div class="analytics-title">Central de Alertas</div>
+                                <div class="analytics-subtitle">Riscos, falhas recorrentes e sinais operacionais</div>
+                            </div>
+                        </div>
+                        <div id="alertsList" class="insights-list"></div>
+                    </div>
+                </div>
+
+                <div id="environmentsView" class="hidden">
+                    <div class="analytics-panel">
+                        <div class="analytics-panel-header">
+                            <div>
+                                <div class="analytics-title">Ambientes</div>
+                                <div class="analytics-subtitle">Perfis de acesso para execucoes em diferentes ambientes</div>
+                            </div>
+                            <button class="panel-action" onclick="openEnvironmentEditor()">Novo ambiente</button>
+                        </div>
+                        <div id="environmentsList" class="insights-list"></div>
+                    </div>
+                </div>
+
+                <!-- Schedules View -->
+                <div id="schedulesView" class="hidden">
+                    <div class="analytics-panel">
+                        <div class="analytics-panel-header">
+                            <div>
+                                <div class="analytics-title">Agendamentos</div>
+                                <div class="analytics-subtitle">Janelas planejadas para execucoes automatizadas</div>
+                            </div>
+                            <button class="panel-action" onclick="openScheduleEditor()">Novo agendamento</button>
+                        </div>
+                        <div id="schedulesList" class="execution-timeline"></div>
+                    </div>
+                </div>
     <!-- Loading Overlay -->
     <div id="loadingOverlay" class="loading-overlay hidden">
         <div class="loading-spinner"></div>
@@ -426,15 +767,15 @@
     </div>
 
     <!-- Custom Modal -->
-    <div id="customModal" style="position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 50;" class="hidden">
-        <div style="background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 24px; max-width: 400px; width: 100%; margin: 16px; box-shadow: var(--shadow-md);">
-            <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 16px;">
-                <div id="modalIcon" style="width: 48px; height: 48px; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: var(--bg-hover); flex-shrink: 0;">
+    <div id="customModal" class="modal-overlay hidden">
+        <div class="modal-content">
+            <div style="display: flex; align-items: flex-start; gap: 12px; margin-bottom: 16px;">
+                <div id="modalIcon" class="modal-icon info">
                     <!-- Icon will be inserted here -->
                 </div>
                 <div>
-                    <h3 id="modalTitle" style="font-size: 16px; font-weight: 600; color: var(--text-primary);"></h3>
-                    <p id="modalMessage" style="font-size: 13px; color: var(--text-muted); margin-top: 4px;"></p>
+                    <h3 id="modalTitle" class="modal-title"></h3>
+                    <p id="modalMessage" class="modal-message"></p>
                 </div>
             </div>
             <div style="display: flex; justify-content: flex-end; gap: 12px;">
@@ -447,7 +788,132 @@
             </div>
         </div>
     </div>
+
+    <div id="scheduleModal" style="position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 55;" class="hidden">
+        <div style="background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 24px; max-width: 520px; width: 100%; margin: 16px; box-shadow: var(--shadow-md);">
+            <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 16px;">
+                <div>
+                    <h3 style="font-size: 16px; font-weight: 600; color: var(--text-primary);" id="scheduleModalTitle">Agendamento</h3>
+                    <p style="font-size: 12px; color: var(--text-muted); margin-top: 6px;">Criação/edição é local nesta etapa. Integração com backend virá depois.</p>
+                </div>
+                <button class="btn-secondary" onclick="closeScheduleEditor()" style="padding: 8px 10px;">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px;">
+                <div style="grid-column: 1 / -1;">
+                    <label class="form-label">Nome</label>
+                    <input id="scheduleTitleInput" class="input" type="text" placeholder="Ex.: Regressão noturna">
+                </div>
+
+                <div>
+                    <label class="form-label">Ambiente</label>
+                    <select id="scheduleEnvInput" class="input">
+                        <option value="HOMOLOGAÇÃO">HOMOLOGAÇÃO</option>
+                        <option value="PRODUÇÃO">PRODUÇÃO</option>
+                        <option value="LOCAL">LOCAL</option>
+                    </select>
+                </div>
+
+                <div>
+                    <label class="form-label">Horário / Janela</label>
+                    <input id="scheduleWindowInput" class="input" type="text" placeholder="Ex.: 22:00">
+                </div>
+
+                <div style="grid-column: 1 / -1;">
+                    <label class="form-label">Descrição</label>
+                    <input id="scheduleCopyInput" class="input" type="text" placeholder="Ex.: Todos os dias | execução rápida">
+                </div>
+
+                <div>
+                    <label class="form-label">Ativo</label>
+                    <select id="scheduleEnabledInput" class="input">
+                        <option value="true">Sim</option>
+                        <option value="false">Não</option>
+                    </select>
+                </div>
+
+                <div>
+                    <label class="form-label">Ícone</label>
+                    <select id="scheduleIconInput" class="input">
+                        <option value="fa-moon">Lua</option>
+                        <option value="fa-bolt">Raio</option>
+                        <option value="fa-clock">Relógio</option>
+                        <option value="fa-calendar-day">Calendário</option>
+                        <option value="fa-code-branch">Deploy</option>
+                    </select>
+                </div>
+            </div>
+
+            <div style="display: flex; justify-content: flex-end; gap: 12px; margin-top: 18px;">
+                <button class="btn-secondary" onclick="closeScheduleEditor()">Cancelar</button>
+                <button class="btn-primary" onclick="saveScheduleEditor()">
+                    <i class="fas fa-save"></i>
+                    <span>Salvar</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div id="environmentModal" style="position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 56;" class="hidden">
+        <div style="background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 24px; max-width: 560px; width: 100%; margin: 16px; box-shadow: var(--shadow-md);">
+            <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 16px;">
+                <div>
+                    <h3 style="font-size: 16px; font-weight: 600; color: var(--text-primary);" id="environmentModalTitle">Ambiente</h3>
+                    <p style="font-size: 12px; color: var(--text-muted); margin-top: 6px;">Gerencia perfis e aplica no config atual. Persistencia em backend fica para a proxima etapa.</p>
+                </div>
+                <button class="btn-secondary" onclick="closeEnvironmentEditor()" style="padding: 8px 10px;">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px;">
+                <div style="grid-column: 1 / -1;">
+                    <label class="form-label">Nome</label>
+                    <input id="environmentNameInput" class="input" type="text" placeholder="Ex.: HOMOLOGAÇÃO">
+                </div>
+
+                <div>
+                    <label class="form-label">Chave</label>
+                    <select id="environmentKeyInput" class="input">
+                        <option value="dev">dev</option>
+                        <option value="test">test</option>
+                        <option value="staging">staging</option>
+                        <option value="prod">prod</option>
+                    </select>
+                </div>
+
+                <div>
+                    <label class="form-label">Ativo</label>
+                    <select id="environmentEnabledInput" class="input">
+                        <option value="true">Sim</option>
+                        <option value="false">Não</option>
+                    </select>
+                </div>
+
+                <div style="grid-column: 1 / -1;">
+                    <label class="form-label">Base URL</label>
+                    <input id="environmentBaseUrlInput" class="input" type="url" placeholder="https://exemplo.com/sistema/login">
+                </div>
+
+                <div style="grid-column: 1 / -1;">
+                    <label class="form-label">Observação</label>
+                    <input id="environmentNotesInput" class="input" type="text" placeholder="Ex.: base homolog do cliente X">
+                </div>
+            </div>
+
+            <div style="display: flex; justify-content: flex-end; gap: 12px; margin-top: 18px;">
+                <button class="btn-secondary" onclick="closeEnvironmentEditor()">Cancelar</button>
+                <button class="btn-primary" onclick="saveEnvironmentEditor()">
+                    <i class="fas fa-save"></i>
+                    <span>Salvar</span>
+                </button>
+            </div>
+        </div>
+    </div>
 </body>
 </html>
 
-<script src="app.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="app.js?v=18"></script>

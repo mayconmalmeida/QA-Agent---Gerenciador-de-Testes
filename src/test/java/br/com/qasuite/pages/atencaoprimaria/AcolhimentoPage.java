@@ -10,6 +10,7 @@ import com.microsoft.playwright.options.LoadState;
 public class AcolhimentoPage {
 
     private final Page page;
+    private static final int TIMEOUT_MS = 10000; // 10 segundos timeout máximo
 
     // Seletores - ajustar conforme a aplicação real (DevExpress)
     private final String MENU_ATENCAO_PRIMARIA = "text=Atendimento da Atenção Primária";
@@ -31,34 +32,110 @@ public class AcolhimentoPage {
         System.out.println("[AcolhimentoPage] Navegando para Atenção Primária > Acolhimento");
         
         try {
+            resolverModalUnidadeSePresente();
+
+            if (clicarPrimeiroVisivel(
+                    ".dx-treeview-item:has-text('Acolhimento'), " +
+                    "[role='treeitem']:has-text('Acolhimento'), " +
+                    "a:has-text('Acolhimento'), " +
+                    "button:has-text('Acolhimento'), " +
+                    SUBMENU_ACOLHIMENTO)) {
+                page.waitForLoadState(LoadState.DOMCONTENTLOADED, new Page.WaitForLoadStateOptions().setTimeout(5000));
+                System.out.println("[AcolhimentoPage] Navegacao concluida");
+                return;
+            }
             // Clica no menu Atenção Primária
             Locator menuAtencaoPrimaria = page.locator(MENU_ATENCAO_PRIMARIA).first();
-            menuAtencaoPrimaria.waitFor();
+            System.out.println("[AcolhimentoPage] Aguardando menu Atenção Primária...");
+            menuAtencaoPrimaria.waitFor(new Locator.WaitForOptions().setTimeout(TIMEOUT_MS));
+            System.out.println("[AcolhimentoPage] Menu encontrado, clicando...");
             menuAtencaoPrimaria.click();
             
-            // Clica no submenu Acolhimento (aguarda automaticamente)
+            // Clica no submenu Acolhimento
             Locator submenuAcolhimento = page.locator(SUBMENU_ACOLHIMENTO).first();
-            submenuAcolhimento.waitFor();
+            System.out.println("[AcolhimentoPage] Aguardando submenu Acolhimento...");
+            submenuAcolhimento.waitFor(new Locator.WaitForOptions().setTimeout(TIMEOUT_MS));
+            System.out.println("[AcolhimentoPage] Submenu encontrado, clicando...");
             submenuAcolhimento.click();
             
-            // Aguarda carregamento da página
-            page.waitForLoadState(LoadState.NETWORKIDLE);
+            // Aguarda carregamento da página (timeout de 5s apenas)
+            System.out.println("[AcolhimentoPage] Aguardando carregamento da página...");
+            page.waitForLoadState(LoadState.DOMCONTENTLOADED, new Page.WaitForLoadStateOptions().setTimeout(5000));
             
             System.out.println("[AcolhimentoPage] Navegação concluída");
         } catch (Exception e) {
-            System.out.println("[AcolhimentoPage] Erro na navegação: " + e.getMessage());
-            throw new RuntimeException("Erro ao navegar para Acolhimento", e);
+            System.out.println("[AcolhimentoPage] ERRO na navegação: " + e.getMessage());
+            e.printStackTrace();
+            throw new RuntimeException("Erro ao navegar para Acolhimento: " + e.getMessage(), e);
         }
     }
 
     /**
      * Clica no botão Inserir para novo acolhimento
      */
+    private boolean clicarPrimeiroVisivel(String seletor) {
+        try {
+            Locator candidatos = page.locator(seletor);
+            int count = candidatos.count();
+            for (int i = 0; i < Math.min(count, 20); i++) {
+                Locator candidato = candidatos.nth(i);
+                if (candidato.isVisible()) {
+                    System.out.println("[AcolhimentoPage] Clicando em Acolhimento");
+                    candidato.click();
+                    return true;
+                }
+            }
+        } catch (Exception ignored) {}
+        return false;
+    }
+
+    private void resolverModalUnidadeSePresente() {
+        try {
+            if (!page.locator("text=CNES").first().isVisible()) {
+                return;
+            }
+
+            System.out.println("[AcolhimentoPage] Modal de unidade detectado; selecionando unidade");
+
+            Locator busca = page.locator("input[placeholder*='Buscar'], [role='textbox'], input[type='text']").first();
+            if (busca.isVisible()) {
+                busca.click();
+                busca.clear();
+                busca.fill("unidade para uso interno");
+                page.waitForTimeout(1000);
+            }
+
+            Locator unidade = page.locator(
+                ".cursor-pointer:has-text('UNIDADE PARA USO INTERNO'), " +
+                "[class*='cursor-pointer']:has-text('UNIDADE PARA USO INTERNO'), " +
+                ".cursor-pointer:has-text('CNES'), " +
+                "[class*='cursor-pointer']:has-text('CNES'), " +
+                "[role='option']:has-text('CNES')"
+            ).first();
+
+            if (unidade.isVisible()) {
+                unidade.scrollIntoViewIfNeeded();
+                unidade.click(new Locator.ClickOptions().setTimeout(8000));
+                page.waitForTimeout(500);
+            }
+
+            Locator continuar = page.locator("button:has-text('Continuar'), [role='button']:has-text('Continuar')").first();
+            if (continuar.isVisible()) {
+                continuar.click(new Locator.ClickOptions().setTimeout(8000));
+                page.waitForLoadState(LoadState.DOMCONTENTLOADED, new Page.WaitForLoadStateOptions().setTimeout(10000));
+                page.waitForTimeout(1500);
+            }
+        } catch (Exception e) {
+            System.out.println("[AcolhimentoPage] Aviso ao resolver modal de unidade: " + e.getMessage());
+        }
+    }
+
     public void clicarInserir() {
         System.out.println("[AcolhimentoPage] Clicando em Inserir");
         Locator botaoInserir = page.locator(BOTAO_INSERIR).first();
-        botaoInserir.waitFor();
+        botaoInserir.waitFor(new Locator.WaitForOptions().setTimeout(TIMEOUT_MS));
         botaoInserir.click();
+        System.out.println("[AcolhimentoPage] Botão Inserir clicado");
     }
 
     /**
@@ -67,17 +144,20 @@ public class AcolhimentoPage {
     public void selecionarPrimeiroPaciente() {
         System.out.println("[AcolhimentoPage] Selecionando primeiro paciente disponível");
         Locator campoBusca = page.locator(CAMPO_BUSCA_PACIENTE).first();
-        campoBusca.waitFor();
+        campoBusca.waitFor(new Locator.WaitForOptions().setTimeout(TIMEOUT_MS));
         
         // Clica no lookup para abrir o dropdown
+        System.out.println("[AcolhimentoPage] Abrindo lookup de pacientes...");
         campoBusca.click();
         
-        // Aguarda dropdown carregar (timeout de 3s)
+        // Aguarda dropdown carregar
         page.waitForTimeout(800);
         
         // Usa seta para baixo e Enter para selecionar o primeiro item
+        System.out.println("[AcolhimentoPage] Selecionando primeiro paciente...");
         page.keyboard().press("ArrowDown");
         page.keyboard().press("Enter");
+        System.out.println("[AcolhimentoPage] Paciente selecionado");
     }
 
     /**
@@ -86,15 +166,17 @@ public class AcolhimentoPage {
     public void marcarConsultaMedica() {
         System.out.println("[AcolhimentoPage] Marcando Consulta Médica");
         Locator checkbox = page.locator(CHECKBOX_CONSULTA_MEDICA).first();
-        checkbox.waitFor();
+        checkbox.waitFor(new Locator.WaitForOptions().setTimeout(TIMEOUT_MS));
         
         // DevExpress checkbox - click on the container to toggle
         Locator checkboxContainer = checkbox.locator(".dx-checkbox-container");
+        System.out.println("[AcolhimentoPage] Clicando no checkbox...");
         if (checkboxContainer.isVisible()) {
             checkboxContainer.click();
         } else {
             checkbox.click();
         }
+        System.out.println("[AcolhimentoPage] Checkbox marcado");
     }
 
     /**
@@ -103,8 +185,9 @@ public class AcolhimentoPage {
     public void clicarFinalizar() {
         System.out.println("[AcolhimentoPage] Clicando em Finalizar");
         Locator botaoFinalizar = page.locator(BOTAO_FINALIZAR).first();
-        botaoFinalizar.waitFor();
+        botaoFinalizar.waitFor(new Locator.WaitForOptions().setTimeout(TIMEOUT_MS));
         botaoFinalizar.click();
+        System.out.println("[AcolhimentoPage] Botão Finalizar clicado");
     }
 
     /**

@@ -1,8 +1,10 @@
 package br.com.qasuite.config;
 
 import br.com.qasuite.core.ReportBuilder;
-import br.com.qasuite.pages.LoginPage;
+import br.com.qasuite.core.SmartLogin;
+import br.com.qasuite.core.SmartPage;
 import com.microsoft.playwright.Page;
+import com.microsoft.playwright.options.LoadState;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.extension.AfterEachCallback;
 import org.junit.jupiter.api.extension.BeforeEachCallback;
@@ -15,16 +17,18 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Classe base para todos os testes de automação.
  * Gerencia o ciclo de vida do browser, login automático e captura de screenshots.
  */
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
+@Timeout(value = 10, unit = TimeUnit.MINUTES)
 public abstract class BaseTest {
 
     protected Page page;
-    protected LoginPage loginPage;
+    protected SmartLogin smartLogin;
 
     private static final ThreadLocal<String> currentTestName = new ThreadLocal<>();
     private static final ThreadLocal<String> currentTestStatus = new ThreadLocal<>();
@@ -93,9 +97,18 @@ public abstract class BaseTest {
             System.err.println("[BaseTest] ERRO: URL base está vazia!");
             throw new IllegalStateException("base.url não configurada em config.properties");
         }
-        page.navigate(baseUrl);
         
-        // Realiza login automático
+        try {
+            System.out.println("[BaseTest] Navegando para URL (timeout 30s)...");
+            page.navigate(baseUrl, new Page.NavigateOptions().setTimeout(30000));
+            System.out.println("[BaseTest] Navegação concluída");
+        } catch (Exception e) {
+            System.err.println("[BaseTest] ERRO ao navegar para URL: " + e.getMessage());
+            System.err.println("[BaseTest] Verifique se a URL está acessível: " + baseUrl);
+            throw new RuntimeException("Não foi possível acessar a URL: " + baseUrl, e);
+        }
+        
+        // Realiza login automático usando SmartLogin (genérico)
         realizarLogin();
         
         // Aguarda carregamento da tela principal (navbar)
@@ -132,14 +145,21 @@ public abstract class BaseTest {
     }
 
     /**
-     * Realiza login automático no sistema
+     * Realiza login automático no sistema usando SmartLogin (genérico)
+     * Detecta campos de login automaticamente - funciona com qualquer sistema
      */
     private void realizarLogin() {
         String usuario = ConfigLoader.getUsuarioPadrao();
         String senha = ConfigLoader.getSenhaPadrao();
         
-        loginPage = new LoginPage(page);
-        loginPage.realizarLogin(usuario, senha);
+        System.out.println("[BaseTest] Iniciando login automático com SmartLogin...");
+        
+        smartLogin = new SmartLogin(page);
+        boolean loginSucesso = smartLogin.loginCompleto(page.url(), usuario, senha);
+        
+        if (!loginSucesso) {
+            throw new RuntimeException("Falha no login automático. Verifique credenciais e URL.");
+        }
         
         System.out.println("[BaseTest] Login realizado com usuário: " + usuario);
     }
@@ -149,14 +169,13 @@ public abstract class BaseTest {
      */
     private void aguardarTelaPrincipal() {
         try {
-            // Aguarda elemento característico da tela principal
-            // Ajustar seletor conforme a aplicação real
-            page.waitForSelector("nav, .navbar, .menu-principal, #main-menu, .sidebar", 
-                    new Page.WaitForSelectorOptions()
+            // Aguarda apenas DOM carregar (mais rápido que NETWORKIDLE)
+            page.waitForLoadState(LoadState.DOMCONTENTLOADED, 
+                    new Page.WaitForLoadStateOptions()
                             .setTimeout(ConfigLoader.getTimeoutPadraoMs()));
-            System.out.println("[BaseTest] Tela principal carregada");
+            System.out.println("[BaseTest] Tela principal carregada (DOM ready)");
         } catch (Exception e) {
-            System.out.println("[BaseTest] Aviso: Não foi possível confirmar carregamento da tela principal");
+            System.out.println("[BaseTest] Aviso: Não foi possível confirmar carregamento da tela principal: " + e.getMessage());
         }
     }
 

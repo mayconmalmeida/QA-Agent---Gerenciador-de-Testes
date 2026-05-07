@@ -1,5 +1,5 @@
 #!/usr/bin/env pwsh
-# Sinnc Saúde - Gerador de Testes (PowerShell)
+# QA Agent - Gerador de Testes (PowerShell)
 # Script para executar o CLI interativo de geração de testes
 
 $ErrorActionPreference = "Stop"
@@ -12,7 +12,7 @@ $Reset = "`e[0m"
 
 Write-Host ""
 Write-Host "╔══════════════════════════════════════╗" -ForegroundColor Cyan
-Write-Host "║   Sinnc Saúde — Gerador de Testes   ║" -ForegroundColor Cyan
+Write-Host "║      QA Agent — Gerador de Testes   ║" -ForegroundColor Cyan
 Write-Host "╚══════════════════════════════════════╝" -ForegroundColor Cyan
 Write-Host ""
 

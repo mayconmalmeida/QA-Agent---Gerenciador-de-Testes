@@ -2,16 +2,19 @@ package br.com.qasuite.core;
 
 import br.com.qasuite.config.ConfigLoader;
 import com.google.gson.Gson;
+import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 
 import java.awt.Desktop;
 import java.io.BufferedReader;
-import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
@@ -39,13 +42,14 @@ public class ReportBuilder {
         String moduloFrontend = null;
         String menuFrontend = null;
         String descricao = null;
+        String executionId = null;
+        String testId = null;
         
         try {
             // Tenta múltiplos caminhos possíveis
             Path[] possiblePaths = {
                 Paths.get("data", "current_test_metadata.json"),  // relativo ao projeto
                 Paths.get(System.getProperty("user.dir"), "data", "current_test_metadata.json"), // com user.dir
-                Paths.get("sinnc-qa-agent", "data", "current_test_metadata.json"), // subpasta
             };
             
             Path metadataFile = null;
@@ -59,10 +63,15 @@ public class ReportBuilder {
             }
             
             if (metadataFile != null) {
-                String content = new String(Files.readAllBytes(metadataFile));
-                System.out.println("[ReportBuilder] Metadata content: " + content);
+                String content = Files.readString(metadataFile, StandardCharsets.UTF_8);
                 
                 JsonObject metadata = new Gson().fromJson(content, JsonObject.class);
+                if (metadata.has("executionId") && !metadata.get("executionId").isJsonNull()) {
+                    executionId = metadata.get("executionId").getAsString();
+                }
+                if (metadata.has("id") && !metadata.get("id").isJsonNull()) {
+                    testId = metadata.get("id").getAsString();
+                }
                 
                 if (metadata.has("name")) {
                     nomePersonalizado = metadata.get("name").getAsString();
@@ -94,6 +103,15 @@ public class ReportBuilder {
         
         resultados.add(new ResultadoTeste(nome, modulo, tipo, status, duracaoMs, screenshot, mensagemErro,
                                          nomePersonalizado, moduloFrontend, menuFrontend, descricao));
+
+        try {
+            String displayName = nomePersonalizado != null ? nomePersonalizado : nome;
+            String displayModule = moduloFrontend != null ? moduloFrontend : modulo;
+            String env = ConfigLoader.getAmbiente();
+            upsertExecutionHistory(executionId, testId, displayName, displayModule, menuFrontend, tipo, status, duracaoMs, mensagemErro, env);
+        } catch (Exception e) {
+            System.err.println("[ReportBuilder] Could not persist execution history: " + e.getMessage());
+        }
     }
 
     /**
@@ -106,9 +124,7 @@ public class ReportBuilder {
             Path caminhoRelatorio = Paths.get(ConfigLoader.getRelatorioOutput());
             Files.createDirectories(caminhoRelatorio.getParent());
             
-            try (FileWriter writer = new FileWriter(caminhoRelatorio.toFile())) {
-                writer.write(html);
-            }
+            Files.writeString(caminhoRelatorio, html, StandardCharsets.UTF_8);
             
             System.out.println("[ReportBuilder] Relatório gerado: " + caminhoRelatorio.toAbsolutePath());
             
@@ -120,6 +136,81 @@ public class ReportBuilder {
             System.err.println("[ReportBuilder] Erro ao gerar relatório: " + e.getMessage());
             e.printStackTrace();
         }
+    }
+
+    private static synchronized void upsertExecutionHistory(
+            String executionId,
+            String testId,
+            String testName,
+            String module,
+            String menu,
+            String testType,
+            String junitStatus,
+            long durationMs,
+            String lastError,
+            String environment
+    ) throws IOException {
+        Path output = Paths.get("data", "qaAgentExecutions.json");
+        Files.createDirectories(output.getParent());
+
+        JsonArray executions;
+        if (Files.exists(output)) {
+            try {
+                String existing = Files.readString(output, StandardCharsets.UTF_8);
+                var parsed = JsonParser.parseString(existing);
+                executions = parsed.isJsonArray() ? parsed.getAsJsonArray() : new JsonArray();
+            } catch (Exception ignored) {
+                executions = new JsonArray();
+            }
+        } else {
+            executions = new JsonArray();
+        }
+
+        String id = (executionId != null && !executionId.trim().isEmpty())
+                ? executionId.trim()
+                : "exec_" + System.currentTimeMillis() + (testId != null ? "_" + testId : "");
+
+        String status = switch (String.valueOf(junitStatus).toUpperCase()) {
+            case "PASSED" -> "success";
+            case "FAILED" -> "failed";
+            case "SKIPPED" -> "cancelled";
+            default -> "running";
+        };
+
+        JsonObject item = new JsonObject();
+        item.addProperty("id", id);
+        if (testId != null) item.addProperty("testId", testId);
+        item.addProperty("testName", testName != null ? testName : "Teste");
+        item.addProperty("module", module != null ? module : "sem_modulo");
+        if (menu != null) item.addProperty("menu", menu);
+        if (testType != null) item.addProperty("testType", testType);
+        item.addProperty("status", status);
+        item.addProperty("durationMs", durationMs);
+        item.addProperty("timestamp", Instant.now().toString());
+        if (environment != null) item.addProperty("environment", environment);
+        if (lastError != null && !lastError.trim().isEmpty()) item.addProperty("lastError", lastError);
+
+        int existingIndex = -1;
+        for (int i = 0; i < executions.size(); i++) {
+            var element = executions.get(i);
+            if (!element.isJsonObject()) continue;
+            var obj = element.getAsJsonObject();
+            if (obj.has("id") && id.equals(obj.get("id").getAsString())) {
+                existingIndex = i;
+                break;
+            }
+        }
+        if (existingIndex >= 0) {
+            executions.set(existingIndex, item);
+        } else {
+            executions.add(item);
+        }
+
+        while (executions.size() > 200) {
+            executions.remove(0);
+        }
+
+        Files.writeString(output, new Gson().toJson(executions), StandardCharsets.UTF_8);
     }
 
     private static String construirHtml() {
