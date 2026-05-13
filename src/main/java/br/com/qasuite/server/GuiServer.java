@@ -3,6 +3,10 @@ package br.com.qasuite.server;
 import br.com.qasuite.ai.IntentParserService;
 import br.com.qasuite.config.ExecutionConfig;
 import br.com.qasuite.domain.TestPlan;
+import br.com.qasuite.memory.BehaviorType;
+import br.com.qasuite.memory.ComponentMemoryEngine;
+import br.com.qasuite.memory.ComponentMemoryEntry;
+import br.com.qasuite.memory.ComponentType;
 import com.google.gson.Gson;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
@@ -93,6 +97,8 @@ public class GuiServer {
         System.out.println("=================================================");
 
         Context7CliService context7Cli = new Context7CliService();
+        ComponentMemoryEngine componentMemoryEngine = new ComponentMemoryEngine();
+        ExecutionLearningStore learningStore = new ExecutionLearningStore();
 
         // API: Generate test with AI
         app.post("/api/generate-test", ctx -> {
@@ -607,6 +613,293 @@ public class GuiServer {
             }
         });
 
+        app.get("/api/component-memory", ctx -> {
+            ctx.header("Access-Control-Allow-Origin", "*");
+            try {
+                String q = ctx.queryParam("q");
+                String module = ctx.queryParam("module");
+                String screen = ctx.queryParam("screen");
+                int limit = 200;
+                try {
+                    String limitRaw = ctx.queryParam("limit");
+                    if (limitRaw != null && !limitRaw.isBlank()) {
+                        limit = Integer.parseInt(limitRaw.trim());
+                    }
+                } catch (Exception ignored) {
+                }
+                var list = componentMemoryEngine.getRepository().list(q, module, screen, limit);
+                ctx.json(list);
+            } catch (Exception e) {
+                ctx.status(500).result("Erro ao carregar memoria de componentes: " + e.getMessage());
+            }
+        });
+
+        app.post("/api/component-memory/save", ctx -> {
+            ctx.header("Access-Control-Allow-Origin", "*");
+            try {
+                JsonObject request = gson.fromJson(ctx.body(), JsonObject.class);
+                ComponentMemoryEntry entry = new ComponentMemoryEntry();
+                if (request.has("id") && !request.get("id").isJsonNull()) {
+                    try {
+                        entry.setId(request.get("id").getAsLong());
+                    } catch (Exception ignored) {
+                    }
+                }
+                entry.setComponentName(request.has("componentName") && !request.get("componentName").isJsonNull()
+                    ? request.get("componentName").getAsString()
+                    : null);
+                entry.setComponentAlias(request.has("componentAlias") && !request.get("componentAlias").isJsonNull()
+                    ? request.get("componentAlias").getAsString()
+                    : null);
+                entry.setModuleName(request.has("moduleName") && !request.get("moduleName").isJsonNull()
+                    ? request.get("moduleName").getAsString()
+                    : null);
+                entry.setScreenName(request.has("screenName") && !request.get("screenName").isJsonNull()
+                    ? request.get("screenName").getAsString()
+                    : null);
+                entry.setExecutionStrategy(request.has("executionStrategy") && !request.get("executionStrategy").isJsonNull()
+                    ? request.get("executionStrategy").getAsString()
+                    : null);
+                entry.setFallbackStrategy(request.has("fallbackStrategy") && !request.get("fallbackStrategy").isJsonNull()
+                    ? request.get("fallbackStrategy").getAsString()
+                    : null);
+                entry.setNotes(request.has("notes") && !request.get("notes").isJsonNull()
+                    ? request.get("notes").getAsString()
+                    : null);
+                entry.setDescription(request.has("description") && !request.get("description").isJsonNull()
+                    ? request.get("description").getAsString()
+                    : null);
+                entry.setExamples(request.has("examples") && !request.get("examples").isJsonNull()
+                    ? request.get("examples").getAsString()
+                    : null);
+                entry.setSemanticTags(request.has("semanticTags") && !request.get("semanticTags").isJsonNull()
+                    ? request.get("semanticTags").getAsString()
+                    : null);
+                entry.setEmbeddingText(request.has("embeddingText") && !request.get("embeddingText").isJsonNull()
+                    ? request.get("embeddingText").getAsString()
+                    : null);
+                if (request.has("ragEnabled") && !request.get("ragEnabled").isJsonNull()) {
+                    try {
+                        entry.setRagEnabled(request.get("ragEnabled").getAsBoolean());
+                    } catch (Exception ignored) {
+                    }
+                }
+                if (request.has("confidenceScore") && !request.get("confidenceScore").isJsonNull()) {
+                    try {
+                        entry.setConfidenceScore(request.get("confidenceScore").getAsDouble());
+                    } catch (Exception ignored) {
+                    }
+                }
+
+                if (request.has("componentType") && !request.get("componentType").isJsonNull()) {
+                    try {
+                        entry.setComponentType(ComponentType.valueOf(request.get("componentType").getAsString()));
+                    } catch (Exception ignored) {
+                    }
+                }
+                if (request.has("behaviorType") && !request.get("behaviorType").isJsonNull()) {
+                    try {
+                        entry.setBehaviorType(BehaviorType.valueOf(request.get("behaviorType").getAsString()));
+                    } catch (Exception ignored) {
+                    }
+                }
+
+                boolean learnedFromUser = request.has("learnedFromUser") && !request.get("learnedFromUser").isJsonNull()
+                    && request.get("learnedFromUser").getAsBoolean();
+                entry.setLearnedFromUser(learnedFromUser);
+
+                if (entry.getExecutionStrategy() != null && !entry.getExecutionStrategy().isBlank()
+                    && !ComponentMemoryEngine.isValidStrategyJson(entry.getExecutionStrategy())) {
+                    ctx.status(400).result("executionStrategy JSON inválido");
+                    return;
+                }
+                if (entry.getFallbackStrategy() != null && !entry.getFallbackStrategy().isBlank()
+                    && !ComponentMemoryEngine.isValidStrategyJson(entry.getFallbackStrategy())) {
+                    ctx.status(400).result("fallbackStrategy JSON inválido");
+                    return;
+                }
+
+                ComponentMemoryEntry saved = learnedFromUser
+                    ? componentMemoryEngine.saveLearnedFromUser(entry)
+                    : componentMemoryEngine.getRepository().upsert(entry);
+                ctx.json(saved);
+            } catch (Exception e) {
+                ctx.status(500).result("Erro ao salvar memoria de componentes: " + e.getMessage());
+            }
+        });
+
+        app.get("/api/rag/logs", ctx -> {
+            ctx.header("Access-Control-Allow-Origin", "*");
+            try {
+                String executionId = ctx.queryParam("executionId");
+                String component = ctx.queryParam("component");
+                int limit = 50;
+                try {
+                    String limitRaw = ctx.queryParam("limit");
+                    if (limitRaw != null && !limitRaw.isBlank()) {
+                        limit = Integer.parseInt(limitRaw.trim());
+                    }
+                } catch (Exception ignored) {
+                }
+                var list = componentMemoryEngine.getRepository().listRagQueryLogs(executionId, component, limit);
+                ctx.json(list);
+            } catch (Exception e) {
+                ctx.status(500).result("Erro ao carregar logs RAG: " + e.getMessage());
+            }
+        });
+
+        app.post("/api/component-memory/delete", ctx -> {
+            ctx.header("Access-Control-Allow-Origin", "*");
+            try {
+                JsonObject request = gson.fromJson(ctx.body(), JsonObject.class);
+                long id = request.get("id").getAsLong();
+                boolean ok = componentMemoryEngine.getRepository().deleteById(id);
+                JsonObject response = new JsonObject();
+                response.addProperty("status", ok ? "success" : "not_found");
+                ctx.result(gson.toJson(response));
+            } catch (Exception e) {
+                ctx.status(500).result("Erro ao deletar memoria de componentes: " + e.getMessage());
+            }
+        });
+
+        app.get("/api/component-memory/stats", ctx -> {
+            ctx.header("Access-Control-Allow-Origin", "*");
+            try {
+                var list = componentMemoryEngine.getRepository().list(null, null, null, 500);
+                int total = list.size();
+                long learned = list.stream().filter(ComponentMemoryEntry::isLearnedFromUser).count();
+                long withStrategy = list.stream().filter(e -> e.getExecutionStrategy() != null && !e.getExecutionStrategy().isBlank()).count();
+                double avgRate = list.stream().mapToDouble(ComponentMemoryEntry::getSuccessRate).average().orElse(0.0);
+
+                JsonObject response = new JsonObject();
+                response.addProperty("total", total);
+                response.addProperty("learnedFromUser", learned);
+                response.addProperty("withStrategy", withStrategy);
+                response.addProperty("avgSuccessRate", (int) Math.round(avgRate));
+
+                var rag = componentMemoryEngine.getRepository().getRagStats();
+                response.addProperty("ragEnabledCount", rag.getRagEnabledCount());
+                response.addProperty("usedAsContextCount", rag.getUsedAsContextCount());
+                response.addProperty("avgConfidence", (int) Math.round(rag.getAvgConfidence() * 100.0));
+                response.addProperty("ragQueriesToday", rag.getRagQueriesToday());
+                response.addProperty("ragUsedInPromptToday", rag.getRagUsedInPromptToday());
+                response.addProperty("ragSuccessWithContextToday", rag.getRagSuccessWithContextToday());
+                response.addProperty("ragHitRateToday", rag.getRagHitRateToday());
+                response.addProperty("ragDistinctComponentsToday", rag.getRagDistinctComponentsToday());
+                ctx.result(gson.toJson(response));
+            } catch (Exception e) {
+                ctx.status(500).result("Erro ao gerar stats: " + e.getMessage());
+            }
+        });
+
+        app.post("/api/executions/{executionId}/events", ctx -> {
+            ctx.header("Access-Control-Allow-Origin", "*");
+            try {
+                String executionId = ctx.pathParam("executionId");
+                String raw = ctx.body();
+                if (raw == null || raw.isBlank()) {
+                    ctx.status(400).result("Body JSON obrigatório");
+                    return;
+                }
+                JsonObject payload = JsonParser.parseString(raw).getAsJsonObject();
+                if (!payload.has("type") || payload.get("type").isJsonNull() || payload.get("type").getAsString().isBlank()) {
+                    ctx.status(400).result("Campo 'type' obrigatório");
+                    return;
+                }
+                payload.addProperty("executionId", executionId);
+                if (!payload.has("timestamp")) {
+                    payload.addProperty("timestamp", System.currentTimeMillis());
+                }
+                ExecutionWebSocket.sendPayload(executionId, payload);
+                JsonObject response = new JsonObject();
+                response.addProperty("status", "sent");
+                ctx.result(gson.toJson(response));
+            } catch (Exception e) {
+                ctx.status(500).result("Erro ao processar evento: " + e.getMessage());
+            }
+        });
+
+        app.post("/api/executions/{executionId}/learning/question", ctx -> {
+            ctx.header("Access-Control-Allow-Origin", "*");
+            try {
+                String executionId = ctx.pathParam("executionId");
+                Map<String, Object> request = gson.fromJson(ctx.body(), Map.class);
+                Object qIdObj = request != null ? request.get("questionId") : null;
+                String questionId = qIdObj != null ? String.valueOf(qIdObj) : null;
+                if (questionId == null || questionId.isBlank()) {
+                    ctx.status(400).result("questionId obrigatório");
+                    return;
+                }
+                learningStore.putQuestion(executionId, questionId, request);
+                ExecutionWebSocket.sendCustom(executionId, "learning_question", request);
+                JsonObject response = new JsonObject();
+                response.addProperty("status", "queued");
+                response.addProperty("executionId", executionId);
+                response.addProperty("questionId", questionId);
+                ctx.result(gson.toJson(response));
+            } catch (Exception e) {
+                ctx.status(500).result("Erro ao registrar pergunta: " + e.getMessage());
+            }
+        });
+
+        app.post("/api/executions/{executionId}/learning/answer", ctx -> {
+            ctx.header("Access-Control-Allow-Origin", "*");
+            try {
+                String executionId = ctx.pathParam("executionId");
+                Map<String, Object> request = gson.fromJson(ctx.body(), Map.class);
+                Object qIdObj = request != null ? request.get("questionId") : null;
+                String questionId = qIdObj != null ? String.valueOf(qIdObj) : null;
+                if (questionId == null || questionId.isBlank()) {
+                    ctx.status(400).result("questionId obrigatório");
+                    return;
+                }
+                learningStore.putAnswer(executionId, questionId, request);
+                learningStore.clearQuestion(executionId, questionId);
+                JsonObject response = new JsonObject();
+                response.addProperty("status", "received");
+                response.addProperty("executionId", executionId);
+                response.addProperty("questionId", questionId);
+                ctx.result(gson.toJson(response));
+            } catch (Exception e) {
+                ctx.status(500).result("Erro ao registrar resposta: " + e.getMessage());
+            }
+        });
+
+        app.get("/api/executions/{executionId}/learning/answer/{questionId}", ctx -> {
+            ctx.header("Access-Control-Allow-Origin", "*");
+            try {
+                String executionId = ctx.pathParam("executionId");
+                String questionId = ctx.pathParam("questionId");
+                int waitMs = 0;
+                try {
+                    String waitRaw = ctx.queryParam("waitMs");
+                    if (waitRaw != null && !waitRaw.isBlank()) {
+                        waitMs = Integer.parseInt(waitRaw.trim());
+                    }
+                } catch (Exception ignored) {
+                }
+                waitMs = Math.max(0, Math.min(waitMs, 15000));
+
+                long start = System.currentTimeMillis();
+                Map<String, Object> answer;
+                do {
+                    answer = learningStore.consumeAnswer(executionId, questionId);
+                    if (answer != null) {
+                        ctx.json(answer);
+                        return;
+                    }
+                    if (waitMs <= 0) {
+                        break;
+                    }
+                    Thread.sleep(250);
+                } while (System.currentTimeMillis() - start < waitMs);
+
+                ctx.status(404).result("pending");
+            } catch (Exception e) {
+                ctx.status(500).result("Erro ao buscar resposta: " + e.getMessage());
+            }
+        });
+
         // API: OpenAI Config - Get current config (without API key)
         app.get("/api/openai-config", ctx -> {
             ctx.header("Access-Control-Allow-Origin", "*");
@@ -1012,6 +1305,9 @@ public class GuiServer {
             Path metadataFile = DATA_DIR.resolve("current_test_metadata.json");
             Files.writeString(metadataFile, gson.toJson(metadata));
             System.out.println("[GuiServer] Metadata saved to: " + metadataFile);
+
+            DatabaseManager db = new DatabaseManager();
+            db.syncConfigToPropertiesFile();
 
             // Execute via Maven
             executeMavenTest();

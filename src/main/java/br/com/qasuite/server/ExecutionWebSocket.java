@@ -80,6 +80,51 @@ public class ExecutionWebSocket {
         ctx.send(gson.toJson(payload));
     }
 
+    public static void sendPayload(String executionId, JsonObject payload) {
+        WsContext ctx = sessions.get(executionId);
+        if (ctx == null || !ctx.session.isOpen()) {
+            return;
+        }
+        if (payload == null) {
+            return;
+        }
+        if (!payload.has("executionId")) {
+            payload.addProperty("executionId", executionId);
+        }
+        if (!payload.has("timestamp")) {
+            payload.addProperty("timestamp", System.currentTimeMillis());
+        }
+        ctx.send(gson.toJson(payload));
+
+        try {
+            String type = payload.has("type") ? payload.get("type").getAsString() : "";
+            if ("execution_start".equals(type)) {
+                executionStatuses.put(executionId, "running");
+            } else if ("execution_complete".equals(type)) {
+                executionStatuses.put(executionId, "completed");
+            } else if ("execution_error".equals(type)) {
+                executionStatuses.put(executionId, "error");
+            }
+        } catch (Exception ignored) {
+        }
+    }
+
+    public static void sendCustom(String executionId, String type, Object data) {
+        WsContext ctx = sessions.get(executionId);
+        if (ctx == null || !ctx.session.isOpen()) {
+            return;
+        }
+
+        JsonObject payload = new JsonObject();
+        payload.addProperty("type", type != null ? type : "custom");
+        payload.addProperty("executionId", executionId);
+        payload.addProperty("timestamp", System.currentTimeMillis());
+        if (data != null) {
+            payload.add("data", gson.toJsonTree(data));
+        }
+        ctx.send(gson.toJson(payload));
+    }
+
     /**
      * Envia início de execução
      */

@@ -13,6 +13,17 @@ O **QA Agent** é uma aplicação web que combina uma interface visual com IA pa
 
 A ideia é simples: você descreve o fluxo em linguagem natural, o agente entende, gera todos os artefatos e ainda executa o teste no navegador real — tudo isso em minutos, não horas.
 
+## RAG + LLM (Inteligência do Sistema)
+
+Além do uso de LLM para interpretar passos, o QA Agent possui uma camada interna de **RAG (Retrieval-Augmented Generation)** baseada em SQLite chamada **Inteligência do Sistema**:
+
+- Antes de chamar a LLM para decidir a ação do passo, o sistema consulta a base local de conhecimento e recupera os componentes mais relevantes (TOP 3) por similaridade e taxa de sucesso
+- O contexto recuperado é anexado ao prompt em uma seção fixa: “CONHECIMENTO JÁ APRENDIDO DO SISTEMA”
+- Toda decisão baseada em contexto é registrada em `rag_query_logs` para rastreabilidade
+- A execução realimenta a confiança do conhecimento (sucesso/falha) e marca o último uso como contexto
+
+O objetivo é: “expliquei uma vez → o agente reutiliza nas próximas execuções”.
+
 ## 📋 Pré-requisitos
 
 - **Java 17+**
@@ -125,14 +136,22 @@ start-server.bat
 ./start-server.sh
 ```
 
-Ou manualmente com Maven:
+Ou com Maven (recomendado):
 ```bash
-mvn clean compile exec:java -Dexec.mainClass="br.com.qasuite.server.GuiServer"
+mvn -q exec:exec@start-gui
 ```
 
 Após iniciar, acesse: **http://localhost:8080**
 
 > **Nota:** O banco de dados SQLite (`data/qa_agent.db`) é criado automaticamente na primeira execução. Todos os testes, menus e configurações são persistidos entre reinícios do servidor.
+
+## Privacidade e “começar do zero”
+
+Este repositório é preparado para ser clonado e usado em qualquer sistema “do zero”, sem carregar dados locais de ninguém:
+
+- Não versiona `.env`, `config.properties` e nem o diretório `data/` (onde ficam testes/sessões/inteligência/logs)
+- Não versiona outputs de execução (`output/`) e logs (`*.log`)
+- Você configura seu ambiente localmente e a base de conhecimento (RAG) começa vazia no seu sistema
 
 ## 🧪 Gerar Novo Teste com IA
 

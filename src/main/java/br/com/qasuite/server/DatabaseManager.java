@@ -66,6 +66,33 @@ public class DatabaseManager {
                     )
                     """);
 
+                stmt.execute("""
+                    CREATE TABLE IF NOT EXISTS component_memory (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        component_name TEXT NOT NULL,
+                        component_alias TEXT,
+                        component_type TEXT,
+                        module_name TEXT,
+                        screen_name TEXT,
+                        behavior_type TEXT,
+                        execution_strategy TEXT,
+                        fallback_strategy TEXT,
+                        successful_attempts INTEGER DEFAULT 0,
+                        failed_attempts INTEGER DEFAULT 0,
+                        last_success TEXT,
+                        learned_from_user INTEGER DEFAULT 0,
+                        notes TEXT,
+                        created_at TEXT,
+                        updated_at TEXT
+                    )
+                    """);
+                stmt.execute("""
+                    CREATE UNIQUE INDEX IF NOT EXISTS ux_component_memory_key
+                    ON component_memory (component_name, module_name, screen_name)
+                    """);
+
+                new br.com.qasuite.memory.ComponentMemoryRepository();
+
                 System.out.println("Database initialized successfully!");
             }
         } catch (SQLException e) {
@@ -265,6 +292,15 @@ public class DatabaseManager {
      * Sincroniza configurações com o arquivo config.properties na raiz
      * para que os testes Java possam acessar
      */
+    public void syncConfigToPropertiesFile() {
+        Map<String, Object> config = loadConfig();
+        if (config == null || config.isEmpty()) {
+            System.out.println("[DatabaseManager] Nenhuma configuracao para sincronizar com config.properties");
+            return;
+        }
+        syncToPropertiesFile(config);
+    }
+
     private void syncToPropertiesFile(Map<String, Object> config) {
         try {
             java.util.Properties props = new java.util.Properties();

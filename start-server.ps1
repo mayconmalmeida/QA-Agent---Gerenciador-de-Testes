@@ -7,10 +7,10 @@ Write-Host ""
 # Check if Maven is installed
 $mavenCheck = Get-Command mvn -ErrorAction SilentlyContinue
 if (-not $mavenCheck) {
-    Write-Host "[WARNING] Maven not found in PATH" -ForegroundColor Yellow
-    Write-Host "Using Maven from IntelliJ IDEA..."
-    $env:MAVEN_HOME = "C:\Program Files\JetBrains\IntelliJ IDEA 2026.1\plugins\maven\lib\maven3"
-    $env:PATH = "$env:MAVEN_HOME\bin;$env:PATH"
+    Write-Host "[ERROR] Maven not found in PATH" -ForegroundColor Red
+    Write-Host "Instale o Maven 3.9+ e garanta que o comando 'mvn' funciona no terminal." -ForegroundColor Yellow
+    Read-Host "Press Enter to exit"
+    exit 1
 }
 
 # Create data directory if it doesn't exist

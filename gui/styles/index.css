@@ -802,6 +802,11 @@ button { font-family: var(--font); cursor: pointer;
 .badge-critico { background: var(--red-bg);    color: var(--red-text);
                  border-color: #FECACA; }
 
+.badge-neutral { background: #F1F5F9; color: #475569; border-color: #E2E8F0; }
+.badge-success { background: var(--green-bg); color: var(--green-text); border-color: #A7F3D0; }
+.badge-warning { background: var(--amber-bg); color: var(--amber-text); border-color: #FDE68A; }
+.badge-danger  { background: var(--red-bg); color: var(--red-text); border-color: #FECACA; }
+
 /* =====================================================
    INPUTS
    ===================================================== */

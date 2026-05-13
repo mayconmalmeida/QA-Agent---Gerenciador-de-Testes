@@ -77,6 +77,10 @@
                     <i class="far fa-sun"></i>
                     <span>Configurações</span>
                 </button>
+                <button onclick="showIntelligence()" class="nav-item" id="nav-intelligence">
+                    <i class="far fa-lightbulb"></i>
+                    <span>Inteligência</span>
+                </button>
             </div>
             
             <!-- Configuration - Collapsible -->
@@ -92,6 +96,9 @@
                         </button>
                         <button onclick="showConfigForm()" class="sidebar-module-item" id="nav-config">
                             Configurações
+                        </button>
+                        <button onclick="showIntelligence()" class="sidebar-module-item" id="nav-intelligence-legacy">
+                            Inteligência do Sistema
                         </button>
                     </div>
                 </div>
@@ -697,6 +704,248 @@
                     </div>
                 </div>
                 
+                <div id="intelligenceView" class="hidden">
+                    <div class="panel">
+                        <div class="panel-header">
+                            <h3 class="panel-title">
+                                <i class="fas fa-brain"></i>
+                                Inteligência do Sistema
+                            </h3>
+                            <div style="display: flex; gap: 8px;">
+                                <button onclick="refreshComponentMemory()" class="btn-secondary">
+                                    <i class="fas fa-rotate"></i>
+                                    <span>Atualizar</span>
+                                </button>
+                                <button onclick="newComponentMemoryEntry()" class="btn-run">
+                                    <i class="fas fa-plus"></i>
+                                    <span>Novo Componente</span>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="panel-body">
+                            <div class="executive-kpi-grid" style="margin-bottom: 16px;">
+                                <div class="executive-kpi-card" style="--kpi-accent: var(--blue-500);">
+                                    <div class="kpi-top">
+                                        <div class="kpi-icon"><i class="fas fa-database"></i></div>
+                                        <div class="kpi-help">Total</div>
+                                    </div>
+                                    <div class="kpi-value" id="cmStatTotal">0</div>
+                                    <div class="kpi-label">Componentes</div>
+                                </div>
+                                <div class="executive-kpi-card" style="--kpi-accent: var(--emerald-500);">
+                                    <div class="kpi-top">
+                                        <div class="kpi-icon"><i class="fas fa-user-check"></i></div>
+                                        <div class="kpi-help">Curado</div>
+                                    </div>
+                                    <div class="kpi-value" id="cmStatLearned">0</div>
+                                    <div class="kpi-label">Aprendido do usuário</div>
+                                </div>
+                                <div class="executive-kpi-card" style="--kpi-accent: var(--amber-500);">
+                                    <div class="kpi-top">
+                                        <div class="kpi-icon"><i class="fas fa-code"></i></div>
+                                        <div class="kpi-help">Reuso</div>
+                                    </div>
+                                    <div class="kpi-value" id="cmStatWithStrategy">0</div>
+                                    <div class="kpi-label">Com estratégia</div>
+                                </div>
+                                <div class="executive-kpi-card" style="--kpi-accent: var(--violet-500);">
+                                    <div class="kpi-top">
+                                        <div class="kpi-icon"><i class="fas fa-percent"></i></div>
+                                        <div class="kpi-help">Média</div>
+                                    </div>
+                                    <div class="kpi-value" id="cmStatAvgRate">0%</div>
+                                    <div class="kpi-label">Taxa de sucesso</div>
+                                </div>
+                            </div>
+
+                            <div class="executive-kpi-grid" style="margin-bottom: 16px;">
+                                <div class="executive-kpi-card" style="--kpi-accent: var(--cyan-500);">
+                                    <div class="kpi-top">
+                                        <div class="kpi-icon"><i class="fas fa-layer-group"></i></div>
+                                        <div class="kpi-help">RAG</div>
+                                    </div>
+                                    <div class="kpi-value" id="cmStatRagEnabled">0</div>
+                                    <div class="kpi-label">Componentes RAG habilitado</div>
+                                </div>
+                                <div class="executive-kpi-card" style="--kpi-accent: var(--indigo-500);">
+                                    <div class="kpi-top">
+                                        <div class="kpi-icon"><i class="fas fa-magnifying-glass"></i></div>
+                                        <div class="kpi-help">Hoje</div>
+                                    </div>
+                                    <div class="kpi-value" id="cmStatRagQueriesToday">0</div>
+                                    <div class="kpi-label">Consultas RAG</div>
+                                </div>
+                                <div class="executive-kpi-card" style="--kpi-accent: var(--emerald-500);">
+                                    <div class="kpi-top">
+                                        <div class="kpi-icon"><i class="fas fa-bullseye"></i></div>
+                                        <div class="kpi-help">Hoje</div>
+                                    </div>
+                                    <div class="kpi-value" id="cmStatRagHitRateToday">0%</div>
+                                    <div class="kpi-label">Acerto c/ contexto</div>
+                                </div>
+                                <div class="executive-kpi-card" style="--kpi-accent: var(--slate-500);">
+                                    <div class="kpi-top">
+                                        <div class="kpi-icon"><i class="fas fa-shield"></i></div>
+                                        <div class="kpi-help">Média</div>
+                                    </div>
+                                    <div class="kpi-value" id="cmStatAvgConfidence">0%</div>
+                                    <div class="kpi-label">Confiança RAG</div>
+                                </div>
+                            </div>
+
+                            <div style="display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 12px; margin-bottom: 12px;">
+                                <input id="cmSearch" class="input" placeholder="Buscar por componente/alias" oninput="refreshComponentMemoryDebounced()">
+                                <input id="cmModule" class="input" placeholder="Filtro módulo (opcional)" oninput="refreshComponentMemoryDebounced()">
+                                <input id="cmScreen" class="input" placeholder="Filtro tela (opcional)" oninput="refreshComponentMemoryDebounced()">
+                            </div>
+
+                            <div id="componentMemoryEditor" class="hidden" style="margin-bottom: 16px;">
+                                <div style="border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 16px; background: var(--bg-input);">
+                                    <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px;">
+                                        <strong style="font-size: 14px; color: var(--text-primary);">Editor de Componente</strong>
+                                        <button onclick="closeComponentMemoryEditor()" class="btn-secondary">
+                                            <i class="fas fa-times"></i>
+                                            <span>Fechar</span>
+                                        </button>
+                                    </div>
+
+                                    <input type="hidden" id="cmId">
+
+                                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                                        <div class="form-group">
+                                            <label class="form-label">Componente (nome)</label>
+                                            <input id="cmComponentName" class="input" placeholder="Ex.: CIAP">
+                                        </div>
+                                        <div class="form-group">
+                                            <label class="form-label">Alias (opcional)</label>
+                                            <input id="cmComponentAlias" class="input" placeholder="Ex.: CIAP - CIAP2, Código CIAP">
+                                        </div>
+                                    </div>
+
+                                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                                        <div class="form-group">
+                                            <label class="form-label">Tipo do Componente</label>
+                                            <select id="cmComponentType" class="input">
+                                                <option value="INPUT">INPUT</option>
+                                                <option value="TEXTAREA">TEXTAREA</option>
+                                                <option value="DROPDOWN">DROPDOWN</option>
+                                                <option value="AUTOCOMPLETE">AUTOCOMPLETE</option>
+                                                <option value="MODAL">MODAL</option>
+                                                <option value="POPUP_SELECTOR">POPUP_SELECTOR</option>
+                                                <option value="TABLE_SELECTOR">TABLE_SELECTOR</option>
+                                                <option value="MULTISELECT">MULTISELECT</option>
+                                                <option value="CHECKBOX">CHECKBOX</option>
+                                                <option value="RADIO">RADIO</option>
+                                                <option value="BUTTON">BUTTON</option>
+                                                <option value="SEARCH_FIELD">SEARCH_FIELD</option>
+                                                <option value="DATE_PICKER">DATE_PICKER</option>
+                                                <option value="CUSTOM_COMPONENT">CUSTOM_COMPONENT</option>
+                                            </select>
+                                        </div>
+                                        <div class="form-group">
+                                            <label class="form-label">Tipo de Comportamento</label>
+                                            <select id="cmBehaviorType" class="input">
+                                                <option value="CLICK_AND_SELECT">CLICK_AND_SELECT</option>
+                                                <option value="TYPE_AND_SELECT">TYPE_AND_SELECT</option>
+                                                <option value="OPEN_MODAL_AND_SELECT">OPEN_MODAL_AND_SELECT</option>
+                                                <option value="INSERT_FIRST_ITEM">INSERT_FIRST_ITEM</option>
+                                                <option value="SELECT_RANDOM_OPTION">SELECT_RANDOM_OPTION</option>
+                                                <option value="SEARCH_AND_SELECT">SEARCH_AND_SELECT</option>
+                                                <option value="WAIT_AND_CLICK">WAIT_AND_CLICK</option>
+                                                <option value="MULTISTEP_SELECTION">MULTISTEP_SELECTION</option>
+                                            </select>
+                                        </div>
+                                    </div>
+
+                                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                                        <div class="form-group">
+                                            <label class="form-label">Módulo (opcional)</label>
+                                            <input id="cmModuleName" class="input" placeholder="Ex.: Escuta Inicial">
+                                        </div>
+                                        <div class="form-group">
+                                            <label class="form-label">Tela (opcional)</label>
+                                            <input id="cmScreenName" class="input" placeholder="Ex.: Escuta Inicial">
+                                        </div>
+                                    </div>
+
+                                    <div class="form-group">
+                                        <label class="form-label">Execution Strategy (JSON do ActionDecision)</label>
+                                        <textarea id="cmExecutionStrategy" rows="6" class="input" style="font-family: var(--mono); font-size: 12px;" placeholder='{"action":"FILL","label":"CIAP","value":"A09","selector":"...","testId":"..."}'></textarea>
+                                    </div>
+
+                                    <div class="form-group">
+                                        <label class="form-label">Fallback Strategy (JSON opcional)</label>
+                                        <textarea id="cmFallbackStrategy" rows="4" class="input" style="font-family: var(--mono); font-size: 12px;" placeholder='{"action":"FILL_PLACEHOLDER","placeholder":"CIAP","value":"A09"}'></textarea>
+                                    </div>
+
+                                    <div class="form-group">
+                                        <label style="display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-muted);">
+                                            <input type="checkbox" id="cmLearnedFromUser" />
+                                            <span>Aprendido do usuário (curado)</span>
+                                        </label>
+                                    </div>
+
+                                    <div class="form-group">
+                                        <label style="display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-muted);">
+                                            <input type="checkbox" id="cmRagEnabled" checked />
+                                            <span>Habilitar como conhecimento RAG</span>
+                                        </label>
+                                    </div>
+
+                                    <div class="form-group">
+                                        <label class="form-label">Notas</label>
+                                        <textarea id="cmNotes" rows="3" class="input" placeholder="Observações sobre este componente/estratégia"></textarea>
+                                    </div>
+
+                                    <div class="form-group">
+                                        <label class="form-label">Descrição (RAG)</label>
+                                        <textarea id="cmDescription" rows="3" class="input" placeholder="Descrição curta para ajudar a IA a reutilizar este conhecimento"></textarea>
+                                    </div>
+
+                                    <div class="form-group">
+                                        <label class="form-label">Exemplos (RAG)</label>
+                                        <textarea id="cmExamples" rows="3" class="input" placeholder="Ex.: No campo CIAP clicar no botão Inserir"></textarea>
+                                    </div>
+
+                                    <div class="form-group">
+                                        <label class="form-label">Tags semânticas (RAG)</label>
+                                        <input id="cmSemanticTags" class="input" placeholder="Ex.: ciap|popup|inserir|escuta inicial">
+                                    </div>
+
+                                    <div class="form-group">
+                                        <label class="form-label">embedding_text (futuro)</label>
+                                        <textarea id="cmEmbeddingText" rows="3" class="input" placeholder="Texto consolidado para embeddings futuros"></textarea>
+                                    </div>
+
+                                    <div style="display: flex; gap: 12px;">
+                                        <button onclick="saveComponentMemory()" class="btn-run" style="flex: 1;">
+                                            <i class="fas fa-save"></i>
+                                            <span>Salvar</span>
+                                        </button>
+                                        <button onclick="closeComponentMemoryEditor()" class="btn-secondary">
+                                            <i class="fas fa-undo"></i>
+                                            <span>Cancelar</span>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div id="componentMemoryList"></div>
+
+                            <div style="margin-top: 18px;">
+                                <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px;">
+                                    <strong style="font-size: 13px; color: var(--text-primary);">Logs de RAG (recentes)</strong>
+                                    <button onclick="refreshRagLogs()" class="btn-secondary">
+                                        <i class="fas fa-rotate"></i>
+                                        <span>Atualizar Logs</span>
+                                    </button>
+                                </div>
+                                <div id="ragLogsList"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Coverage View -->
                 <div id="coverageView" class="hidden">
                     <div class="analytics-page-grid">
@@ -784,6 +1033,122 @@
                 </button>
                 <button id="modalConfirm" class="btn-primary">
                     <span>OK</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div id="ragContextModal" style="position: fixed; inset: 0; background: rgba(0,0,0,0.55); display: flex; align-items: center; justify-content: center; z-index: 70;" class="hidden">
+        <div style="background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 18px; max-width: 920px; width: 100%; margin: 16px; box-shadow: var(--shadow-md);">
+            <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 12px;">
+                <div>
+                    <h3 style="font-size: 16px; font-weight: 600; color: var(--text-primary);">Contexto enviado para a IA (RAG)</h3>
+                    <div id="ragContextMeta" style="font-size: 12px; color: var(--text-muted); margin-top: 6px;"></div>
+                </div>
+                <button class="btn-secondary" onclick="closeRagContextModal()" style="padding: 8px 10px;">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div style="border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 12px; background: var(--bg-input);">
+                <pre id="ragContextText" style="margin: 0; white-space: pre-wrap; font-size: 12px; font-family: var(--mono); color: var(--text-primary);"></pre>
+            </div>
+        </div>
+    </div>
+
+    <div id="learningModal" style="position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 60;" class="hidden">
+        <div style="background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 22px; max-width: 720px; width: 100%; margin: 16px; box-shadow: var(--shadow-md);">
+            <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 14px;">
+                <div>
+                    <h3 style="font-size: 16px; font-weight: 600; color: var(--text-primary);">Aprendizado Assistido</h3>
+                    <p style="font-size: 12px; color: var(--text-muted); margin-top: 6px;">
+                        A execução está aguardando orientação para um componente desconhecido.
+                    </p>
+                </div>
+                <button class="btn-secondary" onclick="closeLearningModal()" style="padding: 8px 10px;">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+
+            <input type="hidden" id="learningQuestionId">
+            <input type="hidden" id="learningExecutionId">
+
+            <div style="border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 12px; background: var(--bg-input); margin-bottom: 14px;">
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                    <div>
+                        <div class="form-label" style="margin-bottom: 6px;">Passo</div>
+                        <div id="learningStepText" style="font-size: 12px; color: var(--text-primary); white-space: pre-wrap;"></div>
+                    </div>
+                    <div>
+                        <div class="form-label" style="margin-bottom: 6px;">Motivo</div>
+                        <div id="learningReasonText" style="font-size: 12px; color: var(--text-primary); white-space: pre-wrap;"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px;">
+                <div class="form-group">
+                    <label class="form-label">Componente (nome)</label>
+                    <input id="learningComponentName" class="input" type="text" placeholder="Ex.: CIAP">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Módulo (opcional)</label>
+                    <input id="learningModuleName" class="input" type="text" placeholder="Ex.: Escuta Inicial">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Tela (opcional)</label>
+                    <input id="learningScreenName" class="input" type="text" placeholder="Ex.: Escuta Inicial">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Tipo do Componente</label>
+                    <select id="learningComponentType" class="input">
+                        <option value="INPUT">INPUT</option>
+                        <option value="TEXTAREA">TEXTAREA</option>
+                        <option value="DROPDOWN">DROPDOWN</option>
+                        <option value="AUTOCOMPLETE">AUTOCOMPLETE</option>
+                        <option value="MODAL">MODAL</option>
+                        <option value="POPUP_SELECTOR">POPUP_SELECTOR</option>
+                        <option value="TABLE_SELECTOR">TABLE_SELECTOR</option>
+                        <option value="MULTISELECT">MULTISELECT</option>
+                        <option value="CHECKBOX">CHECKBOX</option>
+                        <option value="RADIO">RADIO</option>
+                        <option value="BUTTON">BUTTON</option>
+                        <option value="SEARCH_FIELD">SEARCH_FIELD</option>
+                        <option value="DATE_PICKER">DATE_PICKER</option>
+                        <option value="CUSTOM_COMPONENT">CUSTOM_COMPONENT</option>
+                    </select>
+                </div>
+                <div class="form-group" style="grid-column: 1 / -1;">
+                    <label class="form-label">Tipo de Comportamento</label>
+                    <select id="learningBehaviorType" class="input">
+                        <option value="CLICK_AND_SELECT">CLICK_AND_SELECT</option>
+                        <option value="TYPE_AND_SELECT">TYPE_AND_SELECT</option>
+                        <option value="OPEN_MODAL_AND_SELECT">OPEN_MODAL_AND_SELECT</option>
+                        <option value="INSERT_FIRST_ITEM">INSERT_FIRST_ITEM</option>
+                        <option value="SELECT_RANDOM_OPTION">SELECT_RANDOM_OPTION</option>
+                        <option value="SEARCH_AND_SELECT">SEARCH_AND_SELECT</option>
+                        <option value="WAIT_AND_CLICK">WAIT_AND_CLICK</option>
+                        <option value="MULTISTEP_SELECTION">MULTISTEP_SELECTION</option>
+                    </select>
+                </div>
+                <div class="form-group" style="grid-column: 1 / -1;">
+                    <label class="form-label">Execution Strategy (JSON do ActionDecision)</label>
+                    <textarea id="learningExecutionStrategy" rows="6" class="input" style="font-family: var(--mono); font-size: 12px;" placeholder='{"action":"CLICK","role":"button","text":"Inserir"}'></textarea>
+                </div>
+                <div class="form-group" style="grid-column: 1 / -1;">
+                    <label class="form-label">Fallback Strategy (JSON opcional)</label>
+                    <textarea id="learningFallbackStrategy" rows="4" class="input" style="font-family: var(--mono); font-size: 12px;" placeholder='{"action":"CLICK","text":"Inserir"}'></textarea>
+                </div>
+                <div class="form-group" style="grid-column: 1 / -1;">
+                    <label class="form-label">Notas</label>
+                    <textarea id="learningNotes" rows="3" class="input" placeholder="Observações (opcional)"></textarea>
+                </div>
+            </div>
+
+            <div style="display: flex; justify-content: flex-end; gap: 12px; margin-top: 14px;">
+                <button class="btn-secondary" onclick="closeLearningModal()">Cancelar</button>
+                <button class="btn-primary" onclick="submitLearningModal()">
+                    <i class="fas fa-save"></i>
+                    <span>Salvar e Continuar</span>
                 </button>
             </div>
         </div>
@@ -916,4 +1281,4 @@
 </html>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-<script src="app.js?v=18"></script>
+<script src="app.js?v=19"></script>

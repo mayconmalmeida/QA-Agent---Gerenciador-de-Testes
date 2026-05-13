@@ -1,0 +1,13 @@
+package br.com.qasuite.memory;
+
+public enum BehaviorType {
+    CLICK_AND_SELECT,
+    TYPE_AND_SELECT,
+    OPEN_MODAL_AND_SELECT,
+    INSERT_FIRST_ITEM,
+    SELECT_RANDOM_OPTION,
+    SEARCH_AND_SELECT,
+    WAIT_AND_CLICK,
+    MULTISTEP_SELECTION
+}
+

@@ -401,6 +401,12 @@ public class IntentParserService {
      */
     public br.com.qasuite.core.ActionDecision decideAction(String stepDescription,
                                                            String pageContext) {
+        return decideAction(stepDescription, pageContext, null);
+    }
+
+    public br.com.qasuite.core.ActionDecision decideAction(String stepDescription,
+                                                           String pageContext,
+                                                           String ragContext) {
         System.out.println("[IntentParser] Decidindo ação para: " + stepDescription);
 
         if (!config.isValid()) {
@@ -410,12 +416,15 @@ public class IntentParserService {
 
         try {
             String systemPrompt = buildSystemPrompt();
-            String userPrompt = buildDecisionPrompt(stepDescription, pageContext);
+            String userPrompt = buildDecisionPrompt(stepDescription, pageContext, ragContext);
 
             // Debug: mostra o prompt enviado
             System.out.println("[IntentParser] === PROMPT ENVIADO ===");
             System.out.println("Passo: " + stepDescription);
             System.out.println("Contexto (primeiros 3000 chars): " + pageContext.substring(0, Math.min(3000, pageContext.length())));
+            if (ragContext != null && !ragContext.isBlank()) {
+                System.out.println("RAG (primeiros 2000 chars): " + ragContext.substring(0, Math.min(2000, ragContext.length())));
+            }
             System.out.println("[IntentParser] === FIM DO PROMPT ===");
 
             String aiResponse = callOpenAIWithSystem(systemPrompt, userPrompt);
@@ -477,15 +486,17 @@ public class IntentParserService {
     /**
      * Monta o prompt do usuário com o passo e contexto da tela
      */
-    private String buildDecisionPrompt(String stepDescription, String pageContext) {
+    private String buildDecisionPrompt(String stepDescription, String pageContext, String ragContext) {
+        String ragBlock = (ragContext == null || ragContext.isBlank()) ? "" : ("\n" + ragContext.trim() + "\n");
         return """
             Passo a executar:
             %s
-
+            %s
+            Contexto da tela:
             %s
 
             Qual ação Playwright executar? Retorne apenas JSON com a decisão.
-            """.formatted(stepDescription, pageContext);
+            """.formatted(stepDescription, ragBlock, pageContext);
     }
 
     /**

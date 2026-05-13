@@ -24,6 +24,7 @@ let savedTests = [];
 let editingTestId = null; // Track if we're editing a test
 
 const SIDEBAR_COLLAPSED_MODULES_KEY = 'qaSidebarCollapsedModules';
+let executionsDiskSyncTimer = null;
 
 function isNonEmptyString(value) {
     return typeof value === 'string' && value.trim().length > 0;
@@ -37,6 +38,15 @@ function qaHumanizeKey(key) {
         .filter(Boolean)
         .map(part => part.charAt(0).toUpperCase() + part.slice(1))
         .join(' ');
+}
+
+function escapeHtml(value) {
+    return String(value ?? '')
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#39;');
 }
 
 function normalizeMenuStructure(structure) {
@@ -209,6 +219,77 @@ async function loadConfigFromDB() {
         console.error('Error loading config from DB:', error);
         return {};
     }
+}
+
+let componentMemoryEntries = [];
+let editingComponentMemoryId = null;
+let componentMemoryRefreshTimer = null;
+let ragLogsCache = [];
+
+async function loadComponentMemoryFromDB({ q = '', moduleName = '', screenName = '', limit = 200 } = {}) {
+    const params = new URLSearchParams();
+    if (q) params.set('q', q);
+    if (moduleName) params.set('module', moduleName);
+    if (screenName) params.set('screen', screenName);
+    params.set('limit', String(limit));
+    const response = await fetch(`${API_BASE}/api/component-memory?${params.toString()}`);
+    if (!response.ok) {
+        throw new Error(`Falha ao carregar memoria (HTTP ${response.status})`);
+    }
+    const data = await response.json();
+    componentMemoryEntries = Array.isArray(data) ? data : [];
+    return componentMemoryEntries;
+}
+
+async function loadComponentMemoryStatsFromDB() {
+    const response = await fetch(`${API_BASE}/api/component-memory/stats`);
+    if (!response.ok) {
+        throw new Error(`Falha ao carregar stats (HTTP ${response.status})`);
+    }
+    return await response.json();
+}
+
+async function loadRagLogsFromDB({ executionId = '', component = '', limit = 50 } = {}) {
+    const params = new URLSearchParams();
+    if (executionId) params.set('executionId', executionId);
+    if (component) params.set('component', component);
+    params.set('limit', String(limit));
+    const response = await fetch(`${API_BASE}/api/rag/logs?${params.toString()}`);
+    if (!response.ok) {
+        if (response.status === 404) {
+            console.warn('[RAG] Endpoint /api/rag/logs não encontrado (backend antigo).');
+            return [];
+        }
+        throw new Error(`Falha ao carregar logs RAG (HTTP ${response.status})`);
+    }
+    const data = await response.json();
+    return Array.isArray(data) ? data : [];
+}
+
+async function saveComponentMemoryToDB(payload) {
+    const response = await fetch(`${API_BASE}/api/component-memory/save`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+    });
+    if (!response.ok) {
+        const msg = await response.text();
+        throw new Error(msg || `Falha ao salvar (HTTP ${response.status})`);
+    }
+    return await response.json();
+}
+
+async function deleteComponentMemoryFromDB(id) {
+    const response = await fetch(`${API_BASE}/api/component-memory/delete`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id })
+    });
+    if (!response.ok) {
+        const msg = await response.text();
+        throw new Error(msg || `Falha ao deletar (HTTP ${response.status})`);
+    }
+    return await response.json();
 }
 
 // Current view state persistence
@@ -395,6 +476,112 @@ function showModal(title, message, type = 'success', confirmCallback = null, sho
     }
 }
 
+let currentLearningQuestion = null;
+
+function openLearningModalFromWs(wsMessage) {
+    const payload = wsMessage && wsMessage.data ? wsMessage.data : null;
+    if (!payload || !payload.questionId) {
+        return;
+    }
+    currentLearningQuestion = {
+        executionId: wsMessage.executionId,
+        questionId: payload.questionId,
+        componentName: payload.componentName || '',
+        moduleName: payload.moduleName || '',
+        screenName: payload.screenName || '',
+        step: payload.step || '',
+        reason: payload.reason || ''
+    };
+    openLearningModal(currentLearningQuestion);
+}
+
+function openLearningModal(question) {
+    const modal = document.getElementById('learningModal');
+    if (!modal) {
+        showAlert('Learning Mode: modal não encontrado no HTML', 'error');
+        return;
+    }
+    modal.classList.remove('hidden');
+
+    document.getElementById('learningQuestionId').value = question.questionId || '';
+    document.getElementById('learningExecutionId').value = question.executionId || '';
+
+    document.getElementById('learningComponentName').value = question.componentName || '';
+    document.getElementById('learningModuleName').value = question.moduleName || '';
+    document.getElementById('learningScreenName').value = question.screenName || '';
+    document.getElementById('learningStepText').textContent = question.step || '';
+    document.getElementById('learningReasonText').textContent = question.reason || '';
+
+    document.getElementById('learningComponentType').value = 'CUSTOM_COMPONENT';
+    document.getElementById('learningBehaviorType').value = 'MULTISTEP_SELECTION';
+    document.getElementById('learningExecutionStrategy').value = '';
+    document.getElementById('learningFallbackStrategy').value = '';
+    document.getElementById('learningNotes').value = '';
+}
+
+function closeLearningModal() {
+    const modal = document.getElementById('learningModal');
+    if (modal) modal.classList.add('hidden');
+    currentLearningQuestion = null;
+}
+
+async function submitLearningModal() {
+    try {
+        const executionId = document.getElementById('learningExecutionId').value;
+        const questionId = document.getElementById('learningQuestionId').value;
+        const componentName = document.getElementById('learningComponentName').value.trim();
+        const moduleName = document.getElementById('learningModuleName').value.trim();
+        const screenName = document.getElementById('learningScreenName').value.trim();
+
+        const payload = {
+            componentName,
+            componentAlias: '',
+            componentType: document.getElementById('learningComponentType').value,
+            behaviorType: document.getElementById('learningBehaviorType').value,
+            moduleName,
+            screenName,
+            executionStrategy: document.getElementById('learningExecutionStrategy').value.trim(),
+            fallbackStrategy: document.getElementById('learningFallbackStrategy').value.trim(),
+            learnedFromUser: true,
+            notes: document.getElementById('learningNotes').value.trim()
+        };
+
+        if (!componentName) {
+            showAlert('Informe o nome do componente', 'warning');
+            return;
+        }
+        if (!payload.executionStrategy) {
+            showAlert('Informe o JSON da executionStrategy (ActionDecision)', 'warning');
+            return;
+        }
+
+        const saved = await saveComponentMemoryToDB(payload);
+
+        await fetch(`${API_BASE}/api/executions/${encodeURIComponent(executionId)}/learning/answer`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                questionId,
+                componentName,
+                moduleName,
+                screenName,
+                componentType: payload.componentType,
+                behaviorType: payload.behaviorType,
+                executionStrategy: payload.executionStrategy,
+                fallbackStrategy: payload.fallbackStrategy,
+                notes: payload.notes,
+                savedId: saved && saved.id ? Number(saved.id) : null
+            })
+        });
+
+        closeLearningModal();
+        showAlert('Aprendizado salvo e enviado para a execução', 'success');
+    } catch (error) {
+        console.error('Error submitting learning modal:', error);
+        showAlert(`Erro ao salvar aprendizado: ${String(error?.message || error)}`, 'error');
+    }
+}
+
 // Replace alert with custom modal
 function showAlert(message, type = 'info', callbackOrDuration = null) {
     const titles = {
@@ -459,6 +646,9 @@ document.addEventListener('DOMContentLoaded', async () => {
             break;
         case 'config':
             showConfigForm();
+            break;
+        case 'intelligence':
+            showIntelligence();
             break;
         default:
             showDashboard();
@@ -569,6 +759,361 @@ function showSchedules() {
     updateActiveNav('nav-schedules');
     saveViewState('schedules');
     renderSchedulesView();
+}
+
+function showIntelligence() {
+    hideAllViews();
+    document.getElementById('intelligenceView')?.classList.remove('hidden');
+    updatePageTitle('Inteligência do Sistema', 'Componentes conhecidos, estratégias e aprendizado');
+    updateActiveNav('nav-intelligence');
+    saveViewState('intelligence');
+    refreshComponentMemory();
+}
+
+function refreshComponentMemoryDebounced() {
+    if (componentMemoryRefreshTimer) {
+        clearTimeout(componentMemoryRefreshTimer);
+    }
+    componentMemoryRefreshTimer = setTimeout(() => refreshComponentMemory(), 350);
+}
+
+async function refreshComponentMemory() {
+    try {
+        const q = document.getElementById('cmSearch')?.value?.trim() || '';
+        const moduleName = document.getElementById('cmModule')?.value?.trim() || '';
+        const screenName = document.getElementById('cmScreen')?.value?.trim() || '';
+
+        const [stats, entries] = await Promise.all([
+            loadComponentMemoryStatsFromDB(),
+            loadComponentMemoryFromDB({ q, moduleName, screenName, limit: 200 })
+        ]);
+
+        renderComponentMemoryStats(stats);
+        renderComponentMemoryList(entries);
+        try {
+            const ragLogs = await loadRagLogsFromDB({ limit: 30 });
+            renderRagLogsList(ragLogs);
+        } catch (e) {
+            console.warn('[RAG] Falha ao carregar logs:', e);
+            renderRagLogsList([]);
+        }
+    } catch (error) {
+        console.error('Error refreshing component memory:', error);
+        showAlert(`Erro ao carregar Inteligência do Sistema: ${String(error?.message || error)}`, 'error');
+    }
+}
+
+async function refreshRagLogs() {
+    try {
+        const logs = await loadRagLogsFromDB({ limit: 30 });
+        renderRagLogsList(logs);
+    } catch (error) {
+        console.error('Error refreshing rag logs:', error);
+        showAlert(`Erro ao carregar logs RAG: ${String(error?.message || error)}`, 'error');
+    }
+}
+
+function renderComponentMemoryStats(stats) {
+    const set = (id, value) => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = String(value ?? '');
+    };
+    set('cmStatTotal', stats?.total ?? 0);
+    set('cmStatLearned', stats?.learnedFromUser ?? 0);
+    set('cmStatWithStrategy', stats?.withStrategy ?? 0);
+    set('cmStatAvgRate', `${stats?.avgSuccessRate ?? 0}%`);
+    set('cmStatRagEnabled', stats?.ragEnabledCount ?? 0);
+    set('cmStatRagQueriesToday', stats?.ragQueriesToday ?? 0);
+    set('cmStatRagHitRateToday', `${stats?.ragHitRateToday ?? 0}%`);
+    set('cmStatAvgConfidence', `${stats?.avgConfidence ?? 0}%`);
+}
+
+function renderComponentMemoryList(entries) {
+    const container = document.getElementById('componentMemoryList');
+    if (!container) return;
+
+    const list = Array.isArray(entries) ? entries : [];
+    if (list.length === 0) {
+        container.innerHTML = `
+            <div class="empty-state" style="padding: 24px;">
+                <div class="empty-state-icon"><i class="fas fa-brain"></i></div>
+                <div class="empty-state-title">Nenhum componente encontrado</div>
+                <div class="empty-state-sub">Crie uma estratégia para que a IA pare de pedir explicações repetidas.</div>
+            </div>
+        `;
+        return;
+    }
+
+    container.innerHTML = `
+        <div class="test-list">
+            <div class="test-list-header">
+                <span class="test-list-title">${list.length} componente${list.length !== 1 ? 's' : ''}</span>
+            </div>
+            ${list.map(item => {
+                const successRate = Math.round(item.successRate || 0);
+                const attempts = (item.successfulAttempts || 0) + (item.failedAttempts || 0);
+                const label = item.componentName || 'Sem nome';
+                const scope = [item.moduleName, item.screenName].filter(Boolean).join(' › ') || 'Global';
+                const type = item.componentType || '—';
+                const behavior = item.behaviorType || '—';
+                const learned = item.learnedFromUser ? 'Sim' : 'Auto';
+                const ragEnabled = item.ragEnabled !== false;
+                const confidencePct = Math.round(((item.confidenceScore ?? 0) * 100));
+                const lastUsed = item.lastUsedAsContext ? String(item.lastUsedAsContext).replace('T', ' ').replace('Z', '') : '';
+
+                return `
+                    <div class="test-row">
+                        <div class="test-row-icon">
+                            <i class="fas fa-brain"></i>
+                        </div>
+                        <div class="test-row-body">
+                            <div class="test-row-title">${escapeHtml(label)}</div>
+                            <div class="test-row-preview">${escapeHtml(scope)}</div>
+                            <div class="test-row-badges">
+                                <span class="badge badge-neutral">${escapeHtml(type)}</span>
+                                <span class="badge badge-neutral">${escapeHtml(behavior)}</span>
+                                <span class="badge ${successRate >= 80 ? 'badge-success' : successRate >= 50 ? 'badge-warning' : 'badge-danger'}">${successRate}%</span>
+                                <span class="badge badge-neutral">${attempts} tent.</span>
+                                <span class="badge badge-neutral">${escapeHtml(learned)}</span>
+                                <span class="badge ${ragEnabled ? 'badge-success' : 'badge-neutral'}">${ragEnabled ? 'RAG' : 'RAG off'}</span>
+                                <span class="badge ${confidencePct >= 70 ? 'badge-success' : confidencePct >= 40 ? 'badge-warning' : 'badge-neutral'}">Conf: ${confidencePct}%</span>
+                                ${lastUsed ? `<span class="badge badge-neutral">Usado: ${escapeHtml(lastUsed.slice(0, 19))}</span>` : ''}
+                            </div>
+                        </div>
+                        <div class="test-row-actions">
+                            <button onclick="viewLatestRagContextForComponentId(${Number(item.id)})" class="btn-icon" title="Ver contexto enviado">
+                                <i class="fas fa-eye"></i>
+                            </button>
+                            <button onclick="editComponentMemory(${Number(item.id)})" class="btn-icon" title="Editar">
+                                <i class="fas fa-edit"></i>
+                            </button>
+                            <button onclick="deleteComponentMemory(${Number(item.id)})" class="btn-icon danger" title="Excluir">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                        </div>
+                    </div>
+                `;
+            }).join('')}
+        </div>
+    `;
+}
+
+function renderRagLogsList(logs) {
+    const container = document.getElementById('ragLogsList');
+    if (!container) return;
+    const list = Array.isArray(logs) ? logs : [];
+    ragLogsCache = list;
+    if (list.length === 0) {
+        container.innerHTML = `
+            <div class="empty-state" style="padding: 18px;">
+                <div class="empty-state-sub">Nenhum log de RAG encontrado.</div>
+            </div>
+        `;
+        return;
+    }
+    container.innerHTML = `
+        <div class="test-list">
+            <div class="test-list-header">
+                <span class="test-list-title">${list.length} log${list.length !== 1 ? 's' : ''}</span>
+            </div>
+            ${list.map(item => {
+                const selected = item.selectedComponent || '—';
+                const ok = item.executionSuccess === true;
+                const fail = item.executionSuccess === false;
+                const statusBadge = ok ? `<span class="badge badge-success">SUCESSO</span>` : fail ? `<span class="badge badge-danger">FALHA</span>` : `<span class="badge badge-neutral">N/A</span>`;
+                const used = item.usedInPrompt ? `<span class="badge badge-success">Usado no prompt</span>` : `<span class="badge badge-neutral">Sem contexto</span>`;
+                const score = typeof item.score === 'number' ? item.score.toFixed(1) : String(item.score || '0');
+                const createdAt = item.createdAt ? String(item.createdAt).replace('T', ' ').replace('Z', '').slice(0, 19) : '';
+                const hasContext = !!(item.promptContext && String(item.promptContext).trim());
+                return `
+                    <div class="test-row">
+                        <div class="test-row-icon">
+                            <i class="fas fa-magnifying-glass"></i>
+                        </div>
+                        <div class="test-row-body">
+                            <div class="test-row-title">${escapeHtml(selected)}</div>
+                            <div class="test-row-preview">${escapeHtml(item.stepDescription || '')}</div>
+                            <div class="test-row-badges">
+                                ${used}
+                                ${statusBadge}
+                                <span class="badge badge-neutral">Score: ${escapeHtml(score)}</span>
+                                ${createdAt ? `<span class="badge badge-neutral">${escapeHtml(createdAt)}</span>` : ''}
+                            </div>
+                        </div>
+                        <div class="test-row-actions">
+                            ${hasContext ? `<button onclick="openRagContextModalFromLog(${Number(item.id)})" class="btn-icon" title="Ver contexto">
+                                <i class="fas fa-eye"></i>
+                            </button>` : ''}
+                        </div>
+                    </div>
+                `;
+            }).join('')}
+        </div>
+    `;
+}
+
+function newComponentMemoryEntry() {
+    editingComponentMemoryId = null;
+    openComponentMemoryEditor({
+        id: null,
+        componentName: '',
+        componentAlias: '',
+        componentType: 'CUSTOM_COMPONENT',
+        moduleName: '',
+        screenName: '',
+        behaviorType: 'MULTISTEP_SELECTION',
+        executionStrategy: '',
+        fallbackStrategy: '',
+        learnedFromUser: true,
+        notes: '',
+        ragEnabled: true,
+        description: '',
+        examples: '',
+        semanticTags: '',
+        embeddingText: ''
+    });
+}
+
+function editComponentMemory(id) {
+    const item = (componentMemoryEntries || []).find(e => Number(e.id) === Number(id));
+    if (!item) {
+        showAlert('Componente não encontrado', 'warning');
+        return;
+    }
+    editingComponentMemoryId = Number(id);
+    openComponentMemoryEditor(item);
+}
+
+function openComponentMemoryEditor(item) {
+    const editor = document.getElementById('componentMemoryEditor');
+    if (!editor) return;
+    editor.classList.remove('hidden');
+
+    document.getElementById('cmId').value = item?.id ?? '';
+    document.getElementById('cmComponentName').value = item?.componentName ?? '';
+    document.getElementById('cmComponentAlias').value = item?.componentAlias ?? '';
+    document.getElementById('cmComponentType').value = item?.componentType ?? 'CUSTOM_COMPONENT';
+    document.getElementById('cmBehaviorType').value = item?.behaviorType ?? 'MULTISTEP_SELECTION';
+    document.getElementById('cmModuleName').value = item?.moduleName ?? '';
+    document.getElementById('cmScreenName').value = item?.screenName ?? '';
+    document.getElementById('cmExecutionStrategy').value = item?.executionStrategy ?? '';
+    document.getElementById('cmFallbackStrategy').value = item?.fallbackStrategy ?? '';
+    document.getElementById('cmLearnedFromUser').checked = !!item?.learnedFromUser;
+    document.getElementById('cmNotes').value = item?.notes ?? '';
+    document.getElementById('cmRagEnabled').checked = item?.ragEnabled !== false;
+    document.getElementById('cmDescription').value = item?.description ?? '';
+    document.getElementById('cmExamples').value = item?.examples ?? '';
+    document.getElementById('cmSemanticTags').value = item?.semanticTags ?? '';
+    document.getElementById('cmEmbeddingText').value = item?.embeddingText ?? '';
+}
+
+function closeComponentMemoryEditor() {
+    const editor = document.getElementById('componentMemoryEditor');
+    if (editor) editor.classList.add('hidden');
+    editingComponentMemoryId = null;
+}
+
+async function saveComponentMemory() {
+    try {
+        const payload = {
+            id: document.getElementById('cmId').value ? Number(document.getElementById('cmId').value) : null,
+            componentName: document.getElementById('cmComponentName').value.trim(),
+            componentAlias: document.getElementById('cmComponentAlias').value.trim(),
+            componentType: document.getElementById('cmComponentType').value,
+            behaviorType: document.getElementById('cmBehaviorType').value,
+            moduleName: document.getElementById('cmModuleName').value.trim(),
+            screenName: document.getElementById('cmScreenName').value.trim(),
+            executionStrategy: document.getElementById('cmExecutionStrategy').value.trim(),
+            fallbackStrategy: document.getElementById('cmFallbackStrategy').value.trim(),
+            learnedFromUser: document.getElementById('cmLearnedFromUser').checked,
+            notes: document.getElementById('cmNotes').value.trim(),
+            ragEnabled: document.getElementById('cmRagEnabled').checked,
+            description: document.getElementById('cmDescription').value.trim(),
+            examples: document.getElementById('cmExamples').value.trim(),
+            semanticTags: document.getElementById('cmSemanticTags').value.trim(),
+            embeddingText: document.getElementById('cmEmbeddingText').value.trim()
+        };
+
+        if (!payload.componentName) {
+            showAlert('Informe o nome do componente', 'warning');
+            return;
+        }
+
+        await saveComponentMemoryToDB(payload);
+        closeComponentMemoryEditor();
+        await refreshComponentMemory();
+        showAlert('Estratégia salva', 'success');
+    } catch (error) {
+        console.error('Error saving component memory:', error);
+        showAlert(`Erro ao salvar: ${String(error?.message || error)}`, 'error');
+    }
+}
+
+async function viewLatestRagContextForComponentId(id) {
+    try {
+        const item = (componentMemoryEntries || []).find(e => Number(e.id) === Number(id));
+        const componentName = item?.componentName ? String(item.componentName) : '';
+        if (!componentName) {
+            showAlert('Componente inválido', 'warning');
+            return;
+        }
+        const logs = await loadRagLogsFromDB({ component: String(componentName), limit: 1 });
+        if (!logs || logs.length === 0) {
+            showModal('Sem contexto', 'Nenhum log de RAG encontrado para este componente.', 'info');
+            return;
+        }
+        openRagContextModal(logs[0]);
+    } catch (error) {
+        console.error('Error viewing rag context:', error);
+        showAlert(`Erro ao carregar contexto: ${String(error?.message || error)}`, 'error');
+    }
+}
+
+async function openRagContextModalFromLog(logId) {
+    try {
+        const item = (ragLogsCache || []).find(l => Number(l.id) === Number(logId));
+        if (!item) {
+            showAlert('Log não encontrado', 'warning');
+            return;
+        }
+        openRagContextModal(item);
+    } catch (error) {
+        console.error('Error opening rag context modal:', error);
+        showAlert(`Erro ao abrir contexto: ${String(error?.message || error)}`, 'error');
+    }
+}
+
+function openRagContextModal(logItem) {
+    const modal = document.getElementById('ragContextModal');
+    const meta = document.getElementById('ragContextMeta');
+    const text = document.getElementById('ragContextText');
+    if (!modal || !meta || !text) return;
+
+    const createdAt = logItem?.createdAt ? String(logItem.createdAt).replace('T', ' ').replace('Z', '').slice(0, 19) : '';
+    const selected = logItem?.selectedComponent || '—';
+    const status = logItem?.executionSuccess === true ? 'SUCESSO' : logItem?.executionSuccess === false ? 'FALHA' : 'N/A';
+    const score = typeof logItem?.score === 'number' ? logItem.score.toFixed(1) : String(logItem?.score || '0');
+
+    meta.textContent = `${createdAt} • Componente: ${selected} • Status: ${status} • Score: ${score}`;
+    text.textContent = String(logItem?.promptContext || '').trim() || 'Sem contexto (nenhum componente foi recuperado).';
+    modal.classList.remove('hidden');
+}
+
+function closeRagContextModal() {
+    document.getElementById('ragContextModal')?.classList.add('hidden');
+}
+
+async function deleteComponentMemory(id) {
+    try {
+        const ok = confirm('Excluir este componente da memória?');
+        if (!ok) return;
+        await deleteComponentMemoryFromDB(Number(id));
+        await refreshComponentMemory();
+        showAlert('Componente removido', 'success');
+    } catch (error) {
+        console.error('Error deleting component memory:', error);
+        showAlert(`Erro ao excluir: ${String(error?.message || error)}`, 'error');
+    }
 }
 
 // Update dashboard statistics
@@ -1851,6 +2396,24 @@ function saveExecution(execution) {
 
     executions.sort((a, b) => new Date(b.timestamp || b.startedAt || 0) - new Date(a.timestamp || a.startedAt || 0));
     localStorage.setItem('qaAgentExecutions', JSON.stringify(executions.slice(0, 200)));
+
+    if (executionsDiskSyncTimer) {
+        clearTimeout(executionsDiskSyncTimer);
+    }
+    executionsDiskSyncTimer = setTimeout(() => {
+        const raw = localStorage.getItem('qaAgentExecutions');
+        if (raw) {
+            saveToDisk('qaAgentExecutions', raw);
+        }
+    }, 500);
+
+    try {
+        if (currentViewState?.view === 'executions') {
+            loadExecutionsHistory();
+        }
+    } catch (error) {
+        return;
+    }
 }
 
 // Load executions history
@@ -1894,7 +2457,7 @@ function loadExecutionsHistory() {
                 <div class="test-row-title">${exec.testName || 'Teste sem nome'}</div>
                 <div class="test-row-preview">${exec.module || 'Sem módulo'} › ${exec.menu || 'Sem menu'}</div>
                 <div class="test-row-badges">
-                    <span class="badge ${exec.status === 'success' ? 'badge-passou' : exec.status === 'failed' ? 'badge-falhou' : 'badge-executando'}">
+                    <span class="badge ${exec.status === 'success' ? 'badge-passou' : exec.status === 'failed' ? 'badge-falhou' : 'badge-running'}">
                         ${exec.status === 'success' ? 'Sucesso' : exec.status === 'failed' ? 'Falhou' : 'Executando'}
                     </span>
                 </div>
@@ -1940,6 +2503,9 @@ function updateActiveNav(navId) {
     document.querySelectorAll('.nav-item').forEach(item => {
         item.classList.remove('active');
     });
+    document.querySelectorAll('.sidebar-module-item').forEach(item => {
+        item.classList.remove('active');
+    });
     const ids = Array.isArray(navId) ? navId : [navId];
     ids.forEach(id => {
         const activeItem = document.getElementById(id);
@@ -1975,6 +2541,7 @@ function hideAllViews() {
         'newTestForm',
         'menuEditorView',
         'configView',
+        'intelligenceView',
         'coverageView',
         'alertsView',
         'schedulesView',
@@ -3315,11 +3882,33 @@ async function runSingleTestVisual(testId, visualMode = true, slowMo = 500) {
                 onStart: (data) => {
                     console.log('Execution started:', data);
                     showAlert(`${data.testName}\n${data.totalSteps} passos`, 'info', 2500);
+                    saveExecution({
+                        executionId: data.executionId,
+                        testId: test.id,
+                        testName: data.testName || test.name,
+                        module: test.module,
+                        menu: test.menu,
+                        status: 'running',
+                        totalSteps: data.totalSteps,
+                        startedAt: new Date().toISOString(),
+                        timestamp: new Date().toISOString()
+                    });
                 },
                 onProgress: (data) => {
                     console.log('Step progress:', data);
                     // Update UI with progress
                     updateExecutionProgress(data);
+                    saveExecution({
+                        executionId: data.executionId,
+                        status: 'running',
+                        totalSteps: data.totalSteps,
+                        lastStepNumber: data.stepNumber,
+                        lastAction: data.action,
+                        lastDescription: data.description,
+                        lastStatus: data.status,
+                        progress: data.progress,
+                        updatedAt: new Date().toISOString()
+                    });
                 },
                 onComplete: (data) => {
                     console.log('Execution complete:', data);
@@ -3332,16 +3921,33 @@ async function runSingleTestVisual(testId, visualMode = true, slowMo = 500) {
                         successRate >= 80 ? 'success' : 'warning',
                         3500
                     );
+                    saveExecution({
+                        executionId: data.executionId,
+                        status: (data.failedCount || 0) > 0 ? 'failed' : 'success',
+                        successCount: data.successCount,
+                        failedCount: data.failedCount,
+                        totalCount: data.totalCount,
+                        successRate: data.successRate,
+                        completedAt: new Date().toISOString(),
+                        progress: 100,
+                        updatedAt: new Date().toISOString()
+                    });
                     refreshDashboardExecutionsFromDisk();
                 },
                 onError: (data) => {
                     console.error('Execution error:', data);
                     showAlert('Erro na execução: ' + data.error, 'error');
+                    saveExecution({
+                        executionId: result.executionId,
+                        status: 'failed',
+                        error: data.error,
+                        completedAt: new Date().toISOString(),
+                        updatedAt: new Date().toISOString()
+                    });
                     refreshDashboardExecutionsFromDisk();
                 }
             });
 
-            // Save to execution history
             saveExecution({
                 testId: test.id,
                 testName: test.name,
@@ -3350,6 +3956,7 @@ async function runSingleTestVisual(testId, visualMode = true, slowMo = 500) {
                 status: 'running',
                 visualMode: visualMode,
                 executionId: result.executionId,
+                startedAt: new Date().toISOString(),
                 timestamp: new Date().toISOString()
             });
             startExecutionHistoryPoll(result.executionId);
@@ -3588,6 +4195,9 @@ function connectToExecutionWebSocket(executionId, callbacks) {
                 break;
             case 'step_progress':
                 if (callbacks.onProgress) callbacks.onProgress(data);
+                break;
+            case 'learning_question':
+                openLearningModalFromWs(data);
                 break;
             case 'execution_complete':
                 if (callbacks.onComplete) callbacks.onComplete(data);

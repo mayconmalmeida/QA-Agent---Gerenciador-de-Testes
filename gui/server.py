@@ -10,6 +10,7 @@ import json
 import os
 import subprocess
 import sqlite3
+import shutil
 from urllib.parse import urlparse, parse_qs
 from pathlib import Path
 
@@ -19,6 +20,18 @@ GUI_DIR = ROOT_DIR / "gui"
 DATA_DIR = ROOT_DIR / "data"
 DB_PATH = DATA_DIR / "qa_agent.db"
 REPORT_PATH = ROOT_DIR / "output" / "reports" / "relatorio.html"
+
+def resolve_maven_cmd():
+    cmd = os.environ.get("MAVEN_CMD")
+    if cmd and cmd.strip():
+        return cmd.strip()
+    found = shutil.which("mvn")
+    if found:
+        return found
+    found = shutil.which("mvn.cmd")
+    if found:
+        return found
+    return "mvn"
 
 def init_db():
     """Initialize SQLite database with required tables"""
@@ -438,7 +451,7 @@ class GuiHandler(http.server.SimpleHTTPRequestHandler):
                 
                 # Run Maven test
                 result = subprocess.run(
-                    ['C:\\Program Files\\JetBrains\\IntelliJ IDEA 2026.1\\plugins\\maven\\lib\\maven3\\bin\\mvn.cmd', 'test'],
+                    [resolve_maven_cmd(), 'test'],
                     capture_output=True,
                     text=True,
                     cwd='.'
@@ -516,7 +529,7 @@ class GuiHandler(http.server.SimpleHTTPRequestHandler):
                 
                 # For now, simulate execution
                 test_command = [
-                    'C:\\Program Files\\JetBrains\\IntelliJ IDEA 2026.1\\plugins\\maven\\lib\\maven3\\bin\\mvn.cmd', 
+                    resolve_maven_cmd(),
                     'test', 
                     f'-Dtest={test_id}'
                 ]
@@ -555,7 +568,7 @@ class GuiHandler(http.server.SimpleHTTPRequestHandler):
                 # 3. Run all tests in the module
                 
                 result = subprocess.run(
-                    ['C:\\Program Files\\JetBrains\\IntelliJ IDEA 2026.1\\plugins\\maven\\lib\\maven3\\bin\\mvn.cmd', 'test'],
+                    [resolve_maven_cmd(), 'test'],
                     capture_output=True,
                     text=True,
                     cwd='.'
@@ -589,7 +602,7 @@ class GuiHandler(http.server.SimpleHTTPRequestHandler):
                 # 3. Run all tests in the menu
                 
                 result = subprocess.run(
-                    ['C:\\Program Files\\JetBrains\\IntelliJ IDEA 2026.1\\plugins\\maven\\lib\\maven3\\bin\\mvn.cmd', 'test'],
+                    [resolve_maven_cmd(), 'test'],
                     capture_output=True,
                     text=True,
                     cwd='.'
@@ -614,7 +627,7 @@ class GuiHandler(http.server.SimpleHTTPRequestHandler):
         elif parsed_path.path == '/api/run-all-tests':
             try:
                 result = subprocess.run(
-                    ['C:\\Program Files\\JetBrains\\IntelliJ IDEA 2026.1\\plugins\\maven\\lib\\maven3\\bin\\mvn.cmd', 'test'],
+                    [resolve_maven_cmd(), 'test'],
                     capture_output=True,
                     text=True,
                     cwd='.'

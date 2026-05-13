@@ -1,6 +1,17 @@
 package br.com.qasuite.core;
 
 import br.com.qasuite.ai.IntentParserService;
+import br.com.qasuite.learning.ExecutionEventClient;
+import br.com.qasuite.learning.LearningModeClient;
+import br.com.qasuite.memory.ComponentMemoryEngine;
+import br.com.qasuite.memory.ComponentMemoryEntry;
+import br.com.qasuite.memory.BehaviorType;
+import br.com.qasuite.memory.ComponentType;
+import br.com.qasuite.rag.RagContextResult;
+import br.com.qasuite.rag.RagQueryLogEntry;
+import br.com.qasuite.rag.SqliteKnowledgeRetriever;
+import br.com.qasuite.rag.SystemKnowledgeRagService;
+import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.microsoft.playwright.Locator;
@@ -20,9 +31,14 @@ import java.util.function.Consumer;
  */
 public class TestExecutor {
 
+    private static final Gson gson = new Gson();
     private final Page page;
     private final SmartActionExecutor actionExecutor;
     private final IntentParserService intentParser;
+    private final ComponentMemoryEngine componentMemoryEngine;
+    private final SystemKnowledgeRagService ragService;
+    private final LearningModeClient learningClient;
+    private final ExecutionEventClient eventClient;
     private boolean finalizationPopupArmed = false;
     private final int DEFAULT_TIMEOUT = 8000;  // Reduzido de 15000 para 8000
     private final int MAX_RETRIES = 1;  // Reduzido de 2 para 1
@@ -31,6 +47,8 @@ public class TestExecutor {
     private Consumer<StepLog> logCallback;
     private String currentModuleKey;
     private String currentMenuKey;
+    private String currentExecutionId;
+    private String currentTestName;
 
     /**
      * Log de execução de um passo
@@ -94,6 +112,10 @@ public class TestExecutor {
         this.page = page;
         this.actionExecutor = new SmartActionExecutor(page, DEFAULT_TIMEOUT);
         this.intentParser = new IntentParserService();
+        this.componentMemoryEngine = new ComponentMemoryEngine();
+        this.ragService = new SystemKnowledgeRagService(new SqliteKnowledgeRetriever(this.componentMemoryEngine.getRepository()));
+        this.learningClient = new LearningModeClient();
+        this.eventClient = new ExecutionEventClient();
         loadCurrentTestMetadata();
     }
 
@@ -108,6 +130,12 @@ public class TestExecutor {
             }
             if (metadata.has("menu") && !metadata.get("menu").isJsonNull()) {
                 currentMenuKey = metadata.get("menu").getAsString();
+            }
+            if (metadata.has("executionId") && !metadata.get("executionId").isJsonNull()) {
+                currentExecutionId = metadata.get("executionId").getAsString();
+            }
+            if (metadata.has("name") && !metadata.get("name").isJsonNull()) {
+                currentTestName = metadata.get("name").getAsString();
             }
         } catch (Exception ignored) {
         }
@@ -138,45 +166,91 @@ public class TestExecutor {
         System.out.println("[TestExecutor] Iniciando execução inteligente com IA");
         System.out.println("[TestExecutor] Cada passo consultará a IA com o contexto atual da tela");
 
-        // Divide em linhas
-        String[] linhas = descricao.split("\\n");
+        try {
+            String[] linhas = descricao.split("\\n");
+            boolean jaLogado = true;
+            List<String> passos = new ArrayList<>();
 
-        boolean jaLogado = true;
-        int totalSteps = 0;
-        int errorCount = 0;
-        String lastError = null;
-        List<StepLog> stepLogs = new ArrayList<>();
+            for (int i = 0; i < linhas.length; i++) {
+                String linha = linhas[i].trim();
+                if (linha.isEmpty()) continue;
 
-        for (int i = 0; i < linhas.length; i++) {
-            String linha = linhas[i].trim();
-            if (linha.isEmpty()) continue;
+                String passoLimpo = linha.replaceFirst("^\\d+[.\\-\\)]\\s*", "").trim();
 
-            // Remove número inicial (ex: "1. " ou "1- ")
-            String passoLimpo = linha.replaceFirst("^\\d+[.\\-\\)]\\s*", "").trim();
+                if (passoLimpo.toLowerCase().contains("acessar") && passoLimpo.contains("http") && jaLogado) {
+                    System.out.println("[TestExecutor] Ignorando navegação - já logado pelo BaseTest");
+                    continue;
+                }
+                if (passoLimpo.toLowerCase().contains("preencher usuário") &&
+                    passoLimpo.toLowerCase().contains("senha") && jaLogado) {
+                    System.out.println("[TestExecutor] Ignorando login - já realizado pelo BaseTest");
+                    continue;
+                }
 
-            // Pula passos de URL e login já feitos pelo BaseTest
-            if (passoLimpo.toLowerCase().contains("acessar") && passoLimpo.contains("http") && jaLogado) {
-                System.out.println("[TestExecutor] Ignorando navegação - já logado pelo BaseTest");
-                continue;
-            }
-            if (passoLimpo.toLowerCase().contains("preencher usuário") &&
-                passoLimpo.toLowerCase().contains("senha") && jaLogado) {
-                System.out.println("[TestExecutor] Ignorando login - já realizado pelo BaseTest");
-                continue;
+                passos.add(passoLimpo);
             }
 
-            totalSteps++;
-            StepLog log = executarPassoInteligente(totalSteps, passoLimpo);
-            stepLogs.add(log);
+            int totalSteps = passos.size();
+            int errorCount = 0;
+            String lastError = null;
+            List<StepLog> stepLogs = new ArrayList<>();
 
-            if (!log.success) {
-                errorCount++;
-                lastError = log.error;
+            if (currentExecutionId != null && !currentExecutionId.isBlank()) {
+                String testName = currentTestName != null && !currentTestName.isBlank() ? currentTestName : "Execução";
+                eventClient.sendStart(currentExecutionId, testName, totalSteps);
             }
+
+            for (int i = 0; i < passos.size(); i++) {
+                int stepNumber = i + 1;
+                String passo = passos.get(i);
+                StepLog log = executarPassoInteligente(stepNumber, passo);
+                stepLogs.add(log);
+
+                if (!log.success) {
+                    errorCount++;
+                    lastError = log.error;
+                }
+
+                if (currentExecutionId != null && !currentExecutionId.isBlank()) {
+                    eventClient.sendStepProgress(
+                        currentExecutionId,
+                        stepNumber,
+                        totalSteps,
+                        parseActionFromDecision(log.decision),
+                        log.description,
+                        log.success ? "SUCCESS" : "FAILED",
+                        log.durationMs,
+                        log.error,
+                        null
+                    );
+                }
+            }
+
+            System.out.println("[TestExecutor] Teste concluído - " + totalSteps + " passos, " + errorCount + " erro(s)");
+            if (currentExecutionId != null && !currentExecutionId.isBlank()) {
+                eventClient.sendComplete(currentExecutionId, Math.max(0, totalSteps - errorCount), errorCount, totalSteps);
+            }
+            return new ExecutionResult(totalSteps, errorCount, lastError, stepLogs);
+        } catch (Exception e) {
+            if (currentExecutionId != null && !currentExecutionId.isBlank()) {
+                eventClient.sendError(currentExecutionId, e.getMessage());
+            }
+            throw new RuntimeException(e);
         }
+    }
 
-        System.out.println("[TestExecutor] Teste concluído - " + totalSteps + " passos, " + errorCount + " erro(s)");
-        return new ExecutionResult(totalSteps, errorCount, lastError, stepLogs);
+    private static String parseActionFromDecision(String decision) {
+        if (decision == null) {
+            return "UNKNOWN";
+        }
+        try {
+            java.util.regex.Matcher m = java.util.regex.Pattern.compile("ActionDecision\\[(\\w+):").matcher(decision);
+            if (m.find()) {
+                return m.group(1);
+            }
+        } catch (Exception ignored) {
+        }
+        return "UNKNOWN";
     }
 
     /**
@@ -187,6 +261,9 @@ public class TestExecutor {
 
         long startTime = System.currentTimeMillis();
         int retryCount = 0;
+        ActionDecision lastDecision = null;
+        RagContextResult lastRag = null;
+        boolean lastDecisionFromLlm = false;
 
         while (retryCount <= MAX_RETRIES) {
             if (retryCount > 0) {
@@ -201,18 +278,40 @@ public class TestExecutor {
                 String contexto = SmartContext.capturarEFormatar(page);
                 System.out.println("[SmartContext] Capturados " + SmartContext.capturar(page).size() + " elementos");
 
-                // 2. Consulta IA para decidir ação
-                ActionDecision decision = intentParser.decideAction(passo, contexto);
-                System.out.println("[IA Decision] " + decision.getAction() + " - " + decision.getReason());
+                // 2. Consulta memória para decidir/restringir ação
+                var memoryDecision = componentMemoryEngine.lookupDecision(passo, currentModuleKey, currentMenuKey);
+                ActionDecision decision;
+                if (memoryDecision.isPresent()) {
+                    decision = memoryDecision.get();
+                    System.out.println("[Memory Decision] " + decision.getAction());
+                    lastDecisionFromLlm = false;
+                    lastRag = null;
+                } else {
+                    String hints = componentMemoryEngine.buildContextHints(passo, currentModuleKey, currentMenuKey);
+                    if (hints != null && !hints.isBlank()) {
+                        contexto = contexto + "\n\n" + hints;
+                    }
+                    // 3. Consulta IA para decidir ação
+                    lastRag = ragService.retrieveContext(passo, currentModuleKey, currentMenuKey);
+                    String ragContext = lastRag != null ? lastRag.getPromptContext() : null;
+                    decision = intentParser.decideAction(passo, contexto, ragContext);
+                    System.out.println("[IA Decision] " + decision.getAction() + " - " + decision.getReason());
+                    lastDecisionFromLlm = true;
+                }
+                lastDecision = decision;
 
-                // 3. Executa a ação
+                // 4. Executa a ação
                 executarComTratamentoEspecial(decision, passo, contexto);
 
-                // 4. Aguarda estabilização
+                // 5. Aguarda estabilização
                 page.waitForLoadState(LoadState.DOMCONTENTLOADED,
                     new Page.WaitForLoadStateOptions().setTimeout(5000));
 
                 long duration = System.currentTimeMillis() - startTime;
+                componentMemoryEngine.onStepSuccess(passo, currentModuleKey, currentMenuKey, decision);
+                if (lastDecisionFromLlm) {
+                    persistRagLog(passo, lastRag, decision, true);
+                }
 
                 StepLog log = new StepLog(
                     stepNumber, passo,
@@ -229,6 +328,89 @@ public class TestExecutor {
 
                 if (retryCount > MAX_RETRIES) {
                     long duration = System.currentTimeMillis() - startTime;
+                    componentMemoryEngine.onStepFailure(passo, currentModuleKey, currentMenuKey, lastDecision, e.getMessage());
+                    if (lastDecisionFromLlm) {
+                        persistRagLog(passo, lastRag, lastDecision, false);
+                    }
+
+                    if (learningClient.isEnabled() && currentExecutionId != null && !currentExecutionId.isBlank()) {
+                        try {
+                            var componentOpt = componentMemoryEngine.extractComponentName(passo);
+                            if (componentOpt.isPresent()) {
+                                String componentName = componentOpt.get();
+                                System.out.println("[LearningMode] Solicitando ajuda para componente: " + componentName);
+
+                                var answer = learningClient.askAndWait(
+                                    currentExecutionId,
+                                    componentName,
+                                    currentModuleKey,
+                                    currentMenuKey,
+                                    passo,
+                                    e.getMessage()
+                                );
+
+                                if (answer != null) {
+                                    Object execStrObj = answer.get("executionStrategy");
+                                    String execStr = toJsonString(execStrObj);
+                                    if (execStr != null && !execStr.isBlank() && ComponentMemoryEngine.isValidStrategyJson(execStr)) {
+                                        ComponentMemoryEntry learned = new ComponentMemoryEntry();
+                                        learned.setComponentName(componentName);
+                                        learned.setModuleName(currentModuleKey);
+                                        learned.setScreenName(currentMenuKey);
+                                        learned.setLearnedFromUser(true);
+                                        learned.setExecutionStrategy(execStr);
+
+                                        Object fbObj = answer.get("fallbackStrategy");
+                                        String fbStr = toJsonString(fbObj);
+                                        if (fbStr != null && !fbStr.isBlank() && ComponentMemoryEngine.isValidStrategyJson(fbStr)) {
+                                            learned.setFallbackStrategy(fbStr);
+                                        }
+
+                                        Object notesObj = answer.get("notes");
+                                        if (notesObj != null) {
+                                            learned.setNotes(String.valueOf(notesObj));
+                                        }
+
+                                        Object ctObj = answer.get("componentType");
+                                        if (ctObj != null) {
+                                            try {
+                                                learned.setComponentType(ComponentType.valueOf(String.valueOf(ctObj)));
+                                            } catch (Exception ignored) {
+                                            }
+                                        }
+                                        Object btObj = answer.get("behaviorType");
+                                        if (btObj != null) {
+                                            try {
+                                                learned.setBehaviorType(BehaviorType.valueOf(String.valueOf(btObj)));
+                                            } catch (Exception ignored) {
+                                            }
+                                        }
+
+                                        componentMemoryEngine.saveLearnedFromUser(learned);
+
+                                        ActionDecision learnedDecision = ActionDecision.fromJson(execStr);
+                                        String novoContexto = SmartContext.capturarEFormatar(page);
+                                        executarComTratamentoEspecial(learnedDecision, passo, novoContexto);
+                                        page.waitForLoadState(LoadState.DOMCONTENTLOADED,
+                                            new Page.WaitForLoadStateOptions().setTimeout(5000));
+
+                                        componentMemoryEngine.onStepSuccess(passo, currentModuleKey, currentMenuKey, learnedDecision);
+
+                                        StepLog recovered = new StepLog(
+                                            stepNumber, passo,
+                                            "LearningMode: " + learnedDecision.toString(),
+                                            formatPlaywrightAction(learnedDecision),
+                                            true, System.currentTimeMillis() - startTime, null, retryCount
+                                        );
+                                        logStep(recovered);
+                                        return recovered;
+                                    }
+                                }
+                            }
+                        } catch (Exception lmErr) {
+                            System.err.println("[LearningMode] Falha ao aplicar aprendizado: " + lmErr.getMessage());
+                        }
+                    }
 
                     StepLog log = new StepLog(
                         stepNumber, passo,
@@ -245,6 +427,45 @@ public class TestExecutor {
         // Nunca deve chegar aqui
         return new StepLog(stepNumber, passo, "Erro inesperado", "N/A",
             false, 0, "Fluxo de retry falhou", MAX_RETRIES);
+    }
+
+    private void persistRagLog(String step, RagContextResult rag, ActionDecision decision, boolean success) {
+        try {
+            RagQueryLogEntry log = new RagQueryLogEntry();
+            log.setTestExecutionId(currentExecutionId);
+            log.setStepDescription(step);
+            log.setModuleName(currentModuleKey);
+            log.setScreenName(currentMenuKey);
+            log.setRetrievedComponents(SystemKnowledgeRagService.toRetrievedComponentsJson(rag != null ? rag.getMatches() : null));
+            if (rag != null && rag.getSelectedEntry() != null) {
+                log.setSelectedComponent(rag.getSelectedEntry().getComponentName());
+                log.setScore(rag.getSelectedScore());
+            }
+            log.setUsedInPrompt(rag != null && rag.isUsedInPrompt());
+            log.setPromptContext(rag != null ? rag.getPromptContext() : null);
+            log.setLlmDecision(decision != null ? decision.toString() : null);
+            log.setExecutionSuccess(success);
+            componentMemoryEngine.getRepository().insertRagQueryLog(log);
+
+            if (rag != null && rag.isUsedInPrompt() && rag.getSelectedEntry() != null && rag.getSelectedEntry().getId() != null) {
+                componentMemoryEngine.getRepository().markUsedAsContext(rag.getSelectedEntry().getId(), success);
+            }
+        } catch (Exception ignored) {
+        }
+    }
+
+    private static String toJsonString(Object value) {
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof String) {
+            return ((String) value).trim();
+        }
+        try {
+            return gson.toJson(value);
+        } catch (Exception e) {
+            return String.valueOf(value);
+        }
     }
 
     /**
@@ -267,6 +488,12 @@ public class TestExecutor {
         }
 
         // Tratamento especial para navegação hierárquica de menus
+        if (isSuccessValidationStep(passo)) {
+            System.out.println("[TestExecutor] Validacao de sucesso - verificando toast/mensagem real");
+            executarValidacaoMensagemSucesso();
+            return;
+        }
+
         if (isNextPatientStep(passo)) {
             System.out.println("[TestExecutor] Detectado Proximo Paciente - tratamento especial");
             executarProximoPacienteOuAtenderDaLista();
@@ -618,8 +845,7 @@ public class TestExecutor {
         if (!isEscutaInicialContext()) return false;
 
         return normalized.contains("peso") ||
-            normalized.contains("altura") ||
-            normalized.contains("subjetivo");
+            normalized.contains("altura");
     }
 
     private boolean isClinicalTextFieldFillStep(String passo) {
@@ -715,6 +941,13 @@ public class TestExecutor {
             !normalized.contains("finalizar atendimento");
     }
 
+    private boolean isSuccessValidationStep(String passo) {
+        String normalized = normalizeText(passo);
+        return normalized.contains("validar") &&
+            normalized.contains("mensagem") &&
+            normalized.contains("sucesso");
+    }
+
     private void executarNavegacaoAbaEscutaInicial() throws Exception {
         Locator aba = findEscutaInicialTab();
         if (aba == null) {
@@ -779,9 +1012,14 @@ public class TestExecutor {
             clickTabIfVisible("Evolucao");
         }
 
-        if (fillFieldByLabelScript(fieldName, value)) {
-            System.out.println("[TestExecutor] Campo " + fieldName + " preenchido via script por label");
+        Locator clinicalField = findClinicalFieldByLabel(fieldName);
+        if (clinicalField != null) {
+            System.out.println("[TestExecutor] Preenchendo " + fieldName + " via campo marcado por label");
+            fillLocator(clinicalField, value, fieldName);
             page.waitForTimeout(400);
+            if (!fieldContainsValue(clinicalField, value)) {
+                throw new RuntimeException("Campo " + fieldName + " foi preenchido, mas o valor nao ficou no componente");
+            }
             return;
         }
 
@@ -789,6 +1027,15 @@ public class TestExecutor {
         if (field != null) {
             System.out.println("[TestExecutor] Preenchendo " + fieldName + " com valor: " + value);
             fillLocator(field, value, fieldName);
+            page.waitForTimeout(400);
+            if (!fieldContainsValue(field, value)) {
+                throw new RuntimeException("Campo " + fieldName + " foi encontrado, mas o valor nao permaneceu preenchido");
+            }
+            return;
+        }
+
+        if (fillFieldByLabelScript(fieldName, value)) {
+            System.out.println("[TestExecutor] Campo " + fieldName + " preenchido via script por label");
             page.waitForTimeout(400);
             return;
         }
@@ -837,6 +1084,66 @@ public class TestExecutor {
         }
     }
 
+    private Locator findClinicalFieldByLabel(String fieldName) {
+        String marker = "clinical-" + System.currentTimeMillis();
+        try {
+            Object result = page.evaluate(
+                "(args) => {" +
+                    "const wanted = args.field.normalize('NFD').replace(/[\\u0300-\\u036f]/g, '').replace(/\\s+/g, ' ').trim().toLowerCase();" +
+                    "const marker = args.marker;" +
+                    "const norm = s => (s || '').normalize('NFD').replace(/[\\u0300-\\u036f]/g, '').replace(/\\s+/g, ' ').trim().toLowerCase();" +
+                    "const visible = el => {" +
+                        "const r = el.getBoundingClientRect();" +
+                        "const s = window.getComputedStyle(el);" +
+                        "return r.width > 0 && r.height > 0 && s.visibility !== 'hidden' && s.display !== 'none';" +
+                    "};" +
+                    "const editables = 'textarea, input:not([type=hidden]), [role=textbox], [contenteditable=true], .dx-texteditor-input';" +
+                    "const labels = Array.from(document.querySelectorAll('label, span, div, td'))" +
+                        ".filter(el => {" +
+                            "if (!visible(el)) return false;" +
+                            "const t = norm(el.innerText || el.textContent);" +
+                            "return t === wanted || (t.startsWith(wanted) && t.length <= wanted.length + 18);" +
+                        "});" +
+                    "const candidates = [];" +
+                    "const pushField = (field, label) => {" +
+                        "if (!field || !visible(field)) return;" +
+                        "const fb = field.getBoundingClientRect();" +
+                        "const lb = label.getBoundingClientRect();" +
+                        "if (fb.y < lb.y - 12 || fb.y > lb.y + 520) return;" +
+                        "candidates.push({field, dy: Math.abs(fb.y - lb.y), area: fb.width * fb.height});" +
+                    "};" +
+                    "for (const label of labels) {" +
+                        "let scope = label;" +
+                        "for (let i = 0; scope && i < 7; i++, scope = scope.parentElement) {" +
+                            "Array.from(scope.querySelectorAll(editables)).forEach(field => pushField(field, label));" +
+                        "}" +
+                        "let next = label.nextElementSibling;" +
+                        "for (let i = 0; next && i < 80; i++, next = next.nextElementSibling) {" +
+                            "if (next.matches && next.matches(editables)) pushField(next, label);" +
+                            "if (next.querySelectorAll) Array.from(next.querySelectorAll(editables)).forEach(field => pushField(field, label));" +
+                        "}" +
+                    "}" +
+                    "candidates.sort((a, b) => a.dy - b.dy || b.area - a.area);" +
+                    "const target = candidates[0] && candidates[0].field;" +
+                    "if (!target) return false;" +
+                    "document.querySelectorAll('[data-qa-agent-clinical-field]').forEach(el => el.removeAttribute('data-qa-agent-clinical-field'));" +
+                    "target.setAttribute('data-qa-agent-clinical-field', marker);" +
+                    "target.scrollIntoView({block:'center', inline:'nearest'});" +
+                    "return true;" +
+                "}",
+                java.util.Map.of("field", fieldName, "marker", marker)
+            );
+            if (!Boolean.TRUE.equals(result)) {
+                return null;
+            }
+            Locator field = page.locator("[data-qa-agent-clinical-field='" + marker + "']").first();
+            return isVisible(field) ? field : null;
+        } catch (Exception e) {
+            System.out.println("[TestExecutor] Localizacao do campo clinico por label falhou para " + fieldName + ": " + e.getMessage());
+            return null;
+        }
+    }
+
     private boolean fillFieldByLabelScript(String fieldName, String value) {
         try {
             Object result = page.evaluate(
@@ -853,11 +1160,19 @@ public class TestExecutor {
                     "const setValue = el => {" +
                         "el.scrollIntoView({block:'center', inline:'nearest'});" +
                         "el.focus();" +
-                        "if (el.isContentEditable) el.textContent = value; else el.value = value;" +
+                        "if (el.isContentEditable) {" +
+                            "el.textContent = value;" +
+                        "} else {" +
+                            "const proto = el.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;" +
+                            "const desc = Object.getOwnPropertyDescriptor(proto, 'value');" +
+                            "if (desc && desc.set) desc.set.call(el, value); else el.value = value;" +
+                        "}" +
                         "el.dispatchEvent(new InputEvent('input', {bubbles:true, data:value, inputType:'insertText'}));" +
                         "el.dispatchEvent(new Event('change', {bubbles:true}));" +
+                        "el.dispatchEvent(new Event('blur', {bubbles:true}));" +
                         "el.blur();" +
-                        "return true;" +
+                        "const actual = el.isContentEditable ? (el.textContent || '') : (el.value || el.getAttribute('value') || '');" +
+                        "return actual.trim() === value.trim();" +
                     "};" +
                     "const labels = Array.from(document.querySelectorAll('label, span, div, td'))" +
                         ".filter(el => {" +
@@ -1303,6 +1618,75 @@ public class TestExecutor {
         } catch (Exception ignored) {}
     }
 
+    private boolean fieldContainsValue(Locator field, String expected) {
+        try {
+            String actual;
+            try {
+                actual = field.inputValue();
+            } catch (Exception ignored) {
+                actual = field.innerText();
+            }
+            return normalizeText(actual).contains(normalizeText(expected));
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    private void executarValidacaoMensagemSucesso() throws Exception {
+        long start = System.currentTimeMillis();
+        long timeoutMs = 15000;
+
+        while (System.currentTimeMillis() - start < timeoutMs) {
+            String visibleMessage = findVisibleOutcomeMessage();
+            String normalized = normalizeText(visibleMessage);
+
+            if (normalized.contains("erro") || normalized.contains("falha") || normalized.contains("obrigatorio")) {
+                throw new RuntimeException("Mensagem de erro encontrada ao validar sucesso: " + visibleMessage);
+            }
+
+            if (normalized.contains("sucesso") ||
+                normalized.contains("com sucesso") ||
+                normalized.contains("salvo") ||
+                normalized.contains("finalizado") ||
+                normalized.contains("concluido")) {
+                System.out.println("[TestExecutor] Mensagem de sucesso validada: " + visibleMessage);
+                return;
+            }
+
+            page.waitForTimeout(300);
+        }
+
+        throw new RuntimeException("Mensagem de sucesso nao encontrada dentro do timeout");
+    }
+
+    private String findVisibleOutcomeMessage() {
+        try {
+            Object result = page.evaluate(
+                "() => {" +
+                    "const visible = el => {" +
+                        "const r = el.getBoundingClientRect();" +
+                        "const s = window.getComputedStyle(el);" +
+                        "return r.width > 0 && r.height > 0 && s.visibility !== 'hidden' && s.display !== 'none';" +
+                    "};" +
+                    "const selectors = ['.dx-toast-message', '.dx-toast-content', '[role=alert]', '[aria-live]', '.toast', '.alert', 'div', 'span'];" +
+                    "const nodes = [];" +
+                    "for (const selector of selectors) nodes.push(...document.querySelectorAll(selector));" +
+                    "for (const node of nodes) {" +
+                        "if (!visible(node)) continue;" +
+                        "const text = (node.innerText || node.textContent || '').replace(/\\s+/g, ' ').trim();" +
+                        "const lower = text.normalize('NFD').replace(/[\\u0300-\\u036f]/g, '').toLowerCase();" +
+                        "if (!text || text.length < 3 || text.length > 260) continue;" +
+                        "if (lower.includes('erro') || lower.includes('falha') || lower.includes('obrigatorio') || lower.includes('sucesso') || lower.includes('salvo') || lower.includes('finalizado') || lower.includes('concluido')) return text;" +
+                    "}" +
+                    "return '';" +
+                "}"
+            );
+            return result == null ? "" : String.valueOf(result);
+        } catch (Exception e) {
+            return "";
+        }
+    }
+
     private Locator findEscutaInicialTab() {
         String[] selectors = {
             "[role='tab']:has-text('Escuta Inicial')",
@@ -1390,21 +1774,24 @@ public class TestExecutor {
 
     private void executarSelecaoPopupEsus(String passo) throws Exception {
         String normalized = normalizeText(passo);
-        String field = normalized.contains("procedimento") && !normalized.contains("cid10") ? "Procedimentos" : "CID10";
+        String field = normalized.contains("procedimento") && !normalized.contains("cid10") ? "Procedimento" : "CID10";
 
         if (!isEsusPopupVisible()) {
             throw new RuntimeException("Popup e-SUS nao esta visivel para selecionar " + field);
         }
 
-        if (!clickPopupFieldByLabelScript(field)) {
+        boolean clicked = normalizeText(field).contains("cid10") && isProcedurePopupVisible()
+            ? (clickLastCid10FieldInPopupScript() || clickPopupFieldByLabelScript(field))
+            : clickPopupFieldByLabelScript(field);
+        if (!clicked) {
             throw new RuntimeException("Campo " + field + " nao encontrado dentro do popup e-SUS");
         }
 
         page.waitForTimeout(700);
-        if (!selectFirstValidOverlayOptionScript()) {
+        if (!selectFirstValidOverlayOptionScript(field)) {
             page.keyboard().type("A");
             page.waitForTimeout(1200);
-            if (!selectFirstValidOverlayOptionScript()) {
+            if (!selectFirstValidOverlayOptionScript(field)) {
                 page.keyboard().press("Alt+ArrowDown");
                 page.waitForTimeout(700);
                 page.keyboard().press("ArrowDown");
@@ -1412,6 +1799,11 @@ public class TestExecutor {
                 page.keyboard().press("Enter");
                 page.waitForTimeout(800);
             }
+        }
+
+        page.waitForTimeout(500);
+        if (!isPopupFieldSelectedScript(field)) {
+            throw new RuntimeException("Campo " + field + " do popup e-SUS nao ficou selecionado");
         }
     }
 
@@ -1505,16 +1897,16 @@ public class TestExecutor {
             return;
         }
 
-        boolean clicked = clickPopupFieldByLabelScript("CID10") || clickLastCid10FieldInPopupScript();
+        boolean clicked = clickLastCid10FieldInPopupScript() || clickPopupFieldByLabelScript("CID10");
         if (!clicked) {
             return;
         }
 
         page.waitForTimeout(700);
-        if (!selectFirstValidOverlayOptionScript()) {
+        if (!selectFirstValidOverlayOptionScript("CID10")) {
             page.keyboard().type("A");
             page.waitForTimeout(1200);
-            if (!selectFirstValidOverlayOptionScript()) {
+            if (!selectFirstValidOverlayOptionScript("CID10")) {
                 page.keyboard().press("Alt+ArrowDown");
                 page.waitForTimeout(700);
                 page.keyboard().press("ArrowDown");
@@ -1641,30 +2033,77 @@ public class TestExecutor {
         }
     }
 
-    private boolean selectFirstValidOverlayOptionScript() {
+    private boolean isPopupFieldSelectedScript(String field) {
         try {
             Object result = page.evaluate(
-                "() => {" +
+                "(field) => {" +
+                    "const wanted = (field || '').normalize('NFD').replace(/[\\u0300-\\u036f]/g, '').toLowerCase();" +
                     "const norm = s => (s || '').normalize('NFD').replace(/[\\u0300-\\u036f]/g, '').replace(/\\s+/g, ' ').trim().toLowerCase();" +
                     "const visible = el => {" +
                         "const r = el.getBoundingClientRect();" +
                         "const s = window.getComputedStyle(el);" +
                         "return r.width > 0 && r.height > 0 && s.visibility !== 'hidden' && s.display !== 'none';" +
                     "};" +
-                    "const bad = t => !t || t.length < 2 || t.length > 220 || ['selecione','cid10','procedimentos','procedimento'].includes(t) || t.includes('buscar menus') || t.includes('finalizar atendimento') || t.includes('salvar') || t.includes('cancelar') || t.includes('favoritos') || t.includes('administracao');" +
-                    "const selectors = ['.dx-dropdownlist-popup-wrapper .dx-list-item', '.dx-selectbox-popup-wrapper .dx-list-item', '.dx-overlay-content .dx-list-item', '.dx-overlay-content [role=option]', '.dx-overlay-content .dx-item', '[role=listbox] [role=option]'];" +
+                    "const roots = Array.from(document.querySelectorAll('.dx-overlay-content, [role=dialog], .modal, [class*=popup]'))" +
+                        ".filter(el => visible(el) && /inserindo motivacao|inserindo procedimentos|procedimento|motivacao/.test(norm(el.innerText || el.textContent))).reverse();" +
+                    "const fields = wanted.includes('cid10') ? ['cid10'] : ['procedimento'];" +
+                    "for (const root of roots) {" +
+                        "const nodes = Array.from(root.querySelectorAll('label, div, span, td')).filter(visible);" +
+                        "for (const node of nodes) {" +
+                            "const text = norm(node.innerText || node.textContent);" +
+                            "if (!fields.some(f => text.includes(f))) continue;" +
+                            "let scope = node;" +
+                            "for (let i = 0; scope && i < 8; i++, scope = scope.parentElement) {" +
+                                "const input = Array.from(scope.querySelectorAll('input, textarea, .dx-texteditor-input, [role=combobox]')).find(visible);" +
+                                "const value = input ? norm(input.value || input.getAttribute('value') || input.innerText || '') : '';" +
+                                "const scopeText = norm(scope.innerText || scope.textContent);" +
+                                "if (value && !value.includes('selecione') && value !== 'cid10' && value !== 'procedimento') return true;" +
+                                "if (scopeText.includes(' - ') || /^[a-z][0-9]/.test(scopeText)) return true;" +
+                            "}" +
+                        "}" +
+                    "}" +
+                    "return false;" +
+                "}",
+                field
+            );
+            return Boolean.TRUE.equals(result);
+        } catch (Exception e) {
+            System.out.println("[TestExecutor] Validacao de campo do popup e-SUS falhou: " + e.getMessage());
+            return false;
+        }
+    }
+
+    private boolean selectFirstValidOverlayOptionScript(String field) {
+        try {
+            Object result = page.evaluate(
+                "(field) => {" +
+                    "const wanted = (field || '').normalize('NFD').replace(/[\\u0300-\\u036f]/g, '').toLowerCase();" +
+                    "const norm = s => (s || '').normalize('NFD').replace(/[\\u0300-\\u036f]/g, '').replace(/\\s+/g, ' ').trim().toLowerCase();" +
+                    "const visible = el => {" +
+                        "const r = el.getBoundingClientRect();" +
+                        "const s = window.getComputedStyle(el);" +
+                        "return r.width > 0 && r.height > 0 && s.visibility !== 'hidden' && s.display !== 'none';" +
+                    "};" +
+                    "const bad = t => !t || t.length < 2 || t.length > 220 || ['selecione','selecione ...','cid10','procedimentos','procedimento','consulta medica','escuta inicial','nao urgente','fundo municipal de saude de urussanga sc'].includes(t) || t.includes('buscar menus') || t.includes('finalizar atendimento') || t.includes('salvar') || t.includes('cancelar') || t.includes('favoritos') || t.includes('administracao') || t.includes('atendimento da atencao primaria') || t.includes('novidades da versao');" +
+                    "const okForField = t => {" +
+                        "if (bad(t)) return false;" +
+                        "if (wanted.includes('cid10')) return /^[a-z][0-9]/.test(t) || /^[a-z][0-9]{2}/.test(t) || t.includes(' - ');" +
+                        "return /\\d/.test(t) || t.includes(' - ') || t.length > 6;" +
+                    "};" +
+                    "const selectors = ['.dx-dropdownlist-popup-wrapper .dx-list-item', '.dx-selectbox-popup-wrapper .dx-list-item', '.dx-dropdownlist-popup-wrapper [role=option]', '.dx-selectbox-popup-wrapper [role=option]', '[role=listbox] [role=option]'];" +
                     "for (const selector of selectors) {" +
                         "const options = Array.from(document.querySelectorAll(selector)).filter(visible);" +
                         "for (const option of options) {" +
                             "const t = norm(option.innerText || option.textContent);" +
-                            "if (bad(t)) continue;" +
+                            "if (!okForField(t)) continue;" +
                             "option.scrollIntoView({block:'center', inline:'nearest'});" +
                             "option.click();" +
                             "return true;" +
                         "}" +
                     "}" +
                     "return false;" +
-                "}"
+                "}",
+                field
             );
             return Boolean.TRUE.equals(result);
         } catch (Exception e) {
@@ -1759,7 +2198,10 @@ public class TestExecutor {
 
     private boolean hasRequiredMessage(String normalizedField) {
         try {
-            String body = normalizeText(page.locator("body").innerText());
+            String body = normalizeText(page.locator("body").innerText())
+                .replaceAll("[^a-z0-9 ]", " ")
+                .replaceAll("\\s+", " ")
+                .trim();
             return body.contains(normalizedField) && body.contains("preenchimento obrigatorio");
         } catch (Exception e) {
             return false;
@@ -2255,7 +2697,7 @@ public class TestExecutor {
 
         Locator checkbox = findFinalizationCheckbox(label);
         if (checkbox == null) {
-            if (clickFinalizationCheckboxByScript(label)) {
+            if (ensureFinalizationCheckboxCheckedByScript(label)) {
                 page.waitForTimeout(500);
                 return;
             }
@@ -2266,14 +2708,28 @@ public class TestExecutor {
             checkbox.scrollIntoViewIfNeeded();
         } catch (Exception ignored) {}
 
+        if (isFinalizationCheckboxCheckedByScript(label)) {
+            System.out.println("[TestExecutor] Checkbox " + label + " ja estava marcado; mantendo estado");
+            page.waitForTimeout(300);
+            return;
+        }
+
         try {
             checkbox.check(new Locator.CheckOptions().setTimeout(8000));
         } catch (Exception e) {
-            System.out.println("[TestExecutor] check() falhou em " + label + ", tentando click forcado: " + e.getMessage());
-            checkbox.click(new Locator.ClickOptions().setTimeout(8000).setForce(true));
+            System.out.println("[TestExecutor] check() falhou em " + label + ", usando ensure por script: " + e.getMessage());
+            if (!ensureFinalizationCheckboxCheckedByScript(label)) {
+                throw new RuntimeException("Nao foi possivel marcar checkbox " + label + " sem alternar estado");
+            }
         }
 
         page.waitForTimeout(500);
+        if (!isFinalizationCheckboxCheckedByScript(label)) {
+            if (!ensureFinalizationCheckboxCheckedByScript(label)) {
+                throw new RuntimeException("Checkbox " + label + " nao ficou marcado apos tentativa de marcacao");
+            }
+            page.waitForTimeout(500);
+        }
     }
 
     private Locator findFinalizationCheckbox(String label) {
@@ -2386,7 +2842,7 @@ public class TestExecutor {
         return null;
     }
 
-    private boolean clickFinalizationCheckboxByScript(String label) {
+    private boolean isFinalizationCheckboxCheckedByScript(String label) {
         try {
             Object result = page.evaluate(
                 "(label) => {" +
@@ -2398,11 +2854,26 @@ public class TestExecutor {
                         "const rect = el.getBoundingClientRect();" +
                         "return style.visibility !== 'hidden' && style.display !== 'none' && rect.width > 0 && rect.height > 0;" +
                     "};" +
-                    "const popup = [...document.querySelectorAll('[role=\"dialog\"], .modal, [class*=\"modal\"], [class*=\"dialog\"], [class*=\"popup\"], div')]" +
-                        ".filter(visible)" +
-                        ".filter(el => norm(el.innerText).includes('editando finalizar atendimento'))" +
-                        ".sort((a, b) => (a.getBoundingClientRect().width * a.getBoundingClientRect().height) - (b.getBoundingClientRect().width * b.getBoundingClientRect().height))[0] || document.body;" +
+                    "const roots = Array.from(document.querySelectorAll('.dx-overlay-content, [role=\"dialog\"], .modal, [class*=\"modal\"], [class*=\"dialog\"], [class*=\"popup\"]')).filter(visible).reverse();" +
+                    "let popup = null;" +
+                    "for (const root of (roots.length ? roots : [document.body])) {" +
+                        "const t = norm(root.innerText || root.textContent);" +
+                        "if (t.includes('finalizar atendimento') || t.includes('editando finalizar atendimento') || t.includes('consulta medica') || t.includes('alta do episodio')) {" +
+                            "popup = root;" +
+                            "break;" +
+                        "}" +
+                    "}" +
+                    "popup = popup || document.body;" +
                     "const nodes = [...popup.querySelectorAll('label, div, span, [role=\"checkbox\"], input[type=\"checkbox\"], [class*=\"checkbox\"]')].filter(visible);" +
+                    "const checked = (el) => {" +
+                        "if (!el) return false;" +
+                        "if (el.matches && el.matches('input[type=\"checkbox\"]') && el.checked) return true;" +
+                        "if (el.getAttribute && el.getAttribute('aria-checked') === 'true') return true;" +
+                        "const cls = el.className || '';" +
+                        "if (typeof cls === 'string' && (cls.includes('dx-checkbox-checked') || cls.includes('dx-state-selected') || cls.includes('dx-list-item-selected'))) return true;" +
+                        "return !!(el.querySelector && el.querySelector('input[type=\"checkbox\"]:checked, [aria-checked=\"true\"], .dx-checkbox-checked, .dx-state-selected, .dx-list-item-selected'));" +
+                    "};" +
+                    "const matches = [];" +
                     "for (const node of nodes) {" +
                         "const own = norm([node.innerText, node.getAttribute('aria-label'), node.getAttribute('title')].join(' '));" +
                         "let context = own;" +
@@ -2414,8 +2885,77 @@ public class TestExecutor {
                             "node.querySelector('input[type=\"checkbox\"], [role=\"checkbox\"], [class*=\"checkbox\"]') || " +
                             "(node.closest('label, div, tr, li') && node.closest('label, div, tr, li').querySelector('input[type=\"checkbox\"], [role=\"checkbox\"], [class*=\"checkbox\"]'));" +
                         "const target = checkbox || node;" +
-                        "target.scrollIntoView({block: 'center', inline: 'center'});" +
-                        "target.click();" +
+                        "const container = target.closest && target.closest('label, .dx-list-item, .dx-item, div, tr, li') || target;" +
+                        "const r = container.getBoundingClientRect();" +
+                        "matches.push({target, container, area: r.width * r.height});" +
+                    "}" +
+                    "matches.sort((a, b) => a.area - b.area);" +
+                    "for (const item of matches) {" +
+                        "if (checked(item.target) || checked(item.container)) return true;" +
+                    "}" +
+                    "return false;" +
+                "}",
+                label
+            );
+            return Boolean.TRUE.equals(result);
+        } catch (Exception e) {
+            System.out.println("[TestExecutor] Validacao por script do checkbox de finalizacao falhou: " + e.getMessage());
+            return false;
+        }
+    }
+
+    private boolean ensureFinalizationCheckboxCheckedByScript(String label) {
+        try {
+            Object result = page.evaluate(
+                "(label) => {" +
+                    "const norm = (s) => (s || '').toString().normalize('NFD').replace(/[\\u0300-\\u036f]/g, '').toLowerCase().replace(/\\s+/g, ' ').trim();" +
+                    "const wanted = norm(label);" +
+                    "const visible = (el) => {" +
+                        "if (!el) return false;" +
+                        "const style = getComputedStyle(el);" +
+                        "const rect = el.getBoundingClientRect();" +
+                        "return style.visibility !== 'hidden' && style.display !== 'none' && rect.width > 0 && rect.height > 0;" +
+                    "};" +
+                    "const checked = (el) => {" +
+                        "if (!el) return false;" +
+                        "if (el.matches && el.matches('input[type=\"checkbox\"]') && el.checked) return true;" +
+                        "if (el.getAttribute && el.getAttribute('aria-checked') === 'true') return true;" +
+                        "const cls = el.className || '';" +
+                        "if (typeof cls === 'string' && (cls.includes('dx-checkbox-checked') || cls.includes('dx-state-selected') || cls.includes('dx-list-item-selected'))) return true;" +
+                        "return !!(el.querySelector && el.querySelector('input[type=\"checkbox\"]:checked, [aria-checked=\"true\"], .dx-checkbox-checked, .dx-state-selected, .dx-list-item-selected'));" +
+                    "};" +
+                    "const roots = Array.from(document.querySelectorAll('.dx-overlay-content, [role=\"dialog\"], .modal, [class*=\"modal\"], [class*=\"dialog\"], [class*=\"popup\"]')).filter(visible).reverse();" +
+                    "let popup = null;" +
+                    "for (const root of (roots.length ? roots : [document.body])) {" +
+                        "const t = norm(root.innerText || root.textContent);" +
+                        "if (t.includes('finalizar atendimento') || t.includes('editando finalizar atendimento') || t.includes('consulta medica') || t.includes('alta do episodio')) {" +
+                            "popup = root;" +
+                            "break;" +
+                        "}" +
+                    "}" +
+                    "popup = popup || document.body;" +
+                    "const nodes = [...popup.querySelectorAll('label, div, span, [role=\"checkbox\"], input[type=\"checkbox\"], [class*=\"checkbox\"]')].filter(visible);" +
+                    "const matches = [];" +
+                    "for (const node of nodes) {" +
+                        "const own = norm([node.innerText, node.getAttribute('aria-label'), node.getAttribute('title')].join(' '));" +
+                        "let context = own;" +
+                        "for (let parent = node.parentElement, i = 0; parent && i < 5; parent = parent.parentElement, i++) {" +
+                            "context += ' ' + norm(parent.innerText);" +
+                        "}" +
+                        "if (!context.includes(wanted)) continue;" +
+                        "const checkbox = node.matches('input[type=\"checkbox\"], [role=\"checkbox\"], [class*=\"checkbox\"]') ? node : " +
+                            "node.querySelector('input[type=\"checkbox\"], [role=\"checkbox\"], [class*=\"checkbox\"]') || " +
+                            "(node.closest('label, div, tr, li') && node.closest('label, div, tr, li').querySelector('input[type=\"checkbox\"], [role=\"checkbox\"], [class*=\"checkbox\"]'));" +
+                        "const target = checkbox || node;" +
+                        "const container = target.closest && target.closest('label, .dx-list-item, .dx-item, div, tr, li') || target;" +
+                        "const r = container.getBoundingClientRect();" +
+                        "matches.push({target, container, area: r.width * r.height});" +
+                    "}" +
+                    "matches.sort((a, b) => a.area - b.area);" +
+                    "for (const item of matches) {" +
+                        "if (checked(item.target) || checked(item.container)) return true;" +
+                        "item.target.scrollIntoView({block: 'center', inline: 'center'});" +
+                        "item.target.click();" +
                         "return true;" +
                     "}" +
                     "return false;" +
@@ -2424,7 +2964,7 @@ public class TestExecutor {
             );
             return Boolean.TRUE.equals(result);
         } catch (Exception e) {
-            System.out.println("[TestExecutor] Clique por script no checkbox de finalizacao falhou: " + e.getMessage());
+            System.out.println("[TestExecutor] Ensure por script no checkbox de finalizacao falhou: " + e.getMessage());
             return false;
         }
     }
@@ -2520,6 +3060,9 @@ public class TestExecutor {
 
     private void executarCliqueFinalizarPopup() throws Exception {
         if (!waitForFinalizationPopup(8000)) {
+            if (hasRequiredMessage("soap subjetivo")) {
+                throw new RuntimeException("Nao foi possivel finalizar: Soap Subjetivo com preenchimento obrigatorio");
+            }
             throw new RuntimeException("Popup Editando Finalizar Atendimento nao esta visivel para finalizar");
         }
 
@@ -2530,28 +3073,97 @@ public class TestExecutor {
         }
 
         clickLocator(finalizar, "Finalizar popup de atendimento");
-        waitForFinalizationPopupToClose(10000);
+        if (!waitForFinalizationPopupToClose(10000)) {
+            if (hasRequiredMessage("soap subjetivo")) {
+                throw new RuntimeException("Nao foi possivel finalizar: Soap Subjetivo com preenchimento obrigatorio");
+            }
+            tryCloseFinalizationPopupFallback();
+        }
+        if (!waitForFinalizationPopupToClose(5000)) {
+            throw new RuntimeException("Popup Editando Finalizar Atendimento permaneceu aberto apos clicar em Finalizar");
+        }
         finalizationPopupArmed = false;
     }
 
+    private void tryCloseFinalizationPopupFallback() {
+        try {
+            page.keyboard().press("Escape");
+        } catch (Exception ignored) {}
+        page.waitForTimeout(400);
+        if (!waitForFinalizationPopup(250)) return;
+
+        clickPopupButtonByTextScript("Cancelar");
+        page.waitForTimeout(400);
+        if (!waitForFinalizationPopup(250)) return;
+
+        clickPopupCloseIconScript();
+        page.waitForTimeout(400);
+    }
+
     private Locator findFinalizationPopupScope() {
+        Locator pick = findFinalizationPopupScopeOrNull();
+        return pick != null ? pick : page.locator("body");
+    }
+
+    private Locator findFinalizationPopupScopeOrNull() {
         String[] selectors = {
-            "[role='dialog']:has-text('Editando Finalizar Atendimento')",
-            ".modal:has-text('Editando Finalizar Atendimento')",
-            "[class*='modal']:has-text('Editando Finalizar Atendimento')",
-            "[class*='dialog']:has-text('Editando Finalizar Atendimento')",
-            "[class*='popup']:has-text('Editando Finalizar Atendimento')",
-            "div:has-text('Editando Finalizar Atendimento')"
+            ".dx-overlay-content",
+            "[role='dialog']",
+            ".modal",
+            "[class*='modal']",
+            "[class*='dialog']",
+            "[class*='popup']"
         };
 
         for (String selector : selectors) {
-            Locator pick = pickVisibleScopeContaining(page.locator(selector), "editando finalizar atendimento");
-            if (pick != null) {
-                return pick;
-            }
+            Locator pick = pickVisibleFinalizationPopupScope(page.locator(selector));
+            if (pick == null) continue;
+            return pick;
         }
 
-        return page.locator("body");
+        return null;
+    }
+
+    private Locator pickVisibleFinalizationPopupScope(Locator candidates) {
+        int count;
+        try {
+            count = Math.min(candidates.count(), 50);
+        } catch (Exception e) {
+            return null;
+        }
+
+        Locator best = null;
+        int bestScore = -1;
+        int bestIndex = -1;
+        for (int i = 0; i < count; i++) {
+            try {
+                Locator candidate = candidates.nth(i);
+                if (!isVisible(candidate)) continue;
+
+                Locator finalizar = findExactButtonByText("Finalizar", candidate);
+                if (finalizar == null) continue;
+
+                String normalized = normalizeText(candidate.innerText());
+                int score = 0;
+
+                if (normalized.contains("consulta medica")) score += 4;
+                if (normalized.contains("alta do episodio")) score += 4;
+                if (normalized.contains("finalizar atendimento")) score += 3;
+                if (normalized.contains("editando finalizar atendimento")) score += 3;
+                if (normalized.contains("consulta")) score += 2;
+                if (normalized.contains("alta")) score += 2;
+
+                if (score <= 0) continue;
+
+                if (score > bestScore || (score == bestScore && i > bestIndex)) {
+                    best = candidate;
+                    bestScore = score;
+                    bestIndex = i;
+                }
+            } catch (Exception ignored) {}
+        }
+
+        return best;
     }
 
     private Locator pickVisibleScopeContaining(Locator candidates, String requiredText) {
@@ -2661,8 +3273,8 @@ public class TestExecutor {
         long start = System.currentTimeMillis();
         while (System.currentTimeMillis() - start < timeoutMs) {
             try {
-                Locator title = page.getByText("Editando Finalizar Atendimento", new Page.GetByTextOptions().setExact(false)).first();
-                if (isVisible(title)) return true;
+                Locator scope = findFinalizationPopupScopeOrNull();
+                if (scope != null && isVisible(scope)) return true;
             } catch (Exception ignored) {}
             page.waitForTimeout(250);
         }
@@ -2672,12 +3284,12 @@ public class TestExecutor {
     private boolean waitForFinalizationPopupToClose(int timeoutMs) {
         long start = System.currentTimeMillis();
         while (System.currentTimeMillis() - start < timeoutMs) {
-            if (!waitForFinalizationPopup(250)) {
+            if (findFinalizationPopupScopeOrNull() == null) {
                 return true;
             }
             page.waitForTimeout(250);
         }
-        return !waitForFinalizationPopup(250);
+        return findFinalizationPopupScopeOrNull() == null;
     }
 
     private void executarSelecaoConsultorio() throws Exception {

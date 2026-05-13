@@ -39,6 +39,8 @@ public class ActionDecision {
     private final String key;
     private final String contains;
     private final Integer waitMs;
+    private final String testId;
+    private final String selector;
     private final String reason;      // Explicação da IA sobre a decisão
     private final boolean needsRetry; // Se a ação pode precisar de retry
 
@@ -55,6 +57,8 @@ public class ActionDecision {
         this.key = builder.key;
         this.contains = builder.contains;
         this.waitMs = builder.waitMs;
+        this.testId = builder.testId;
+        this.selector = builder.selector;
         this.reason = builder.reason;
         this.needsRetry = builder.needsRetry;
     }
@@ -80,6 +84,8 @@ public class ActionDecision {
             builder.option(getString(json, "option", null));
             builder.key(getString(json, "key", null));
             builder.contains(getString(json, "contains", null));
+            builder.testId(getString(json, "testId", null));
+            builder.selector(getString(json, "selector", null));
             builder.reason(getString(json, "reason", null));
 
             // Integer fields
@@ -126,6 +132,8 @@ public class ActionDecision {
     public String getKey() { return key; }
     public String getContains() { return contains; }
     public Integer getWaitMs() { return waitMs; }
+    public String getTestId() { return testId; }
+    public String getSelector() { return selector; }
     public String getReason() { return reason; }
     public boolean isNeedsRetry() { return needsRetry; }
 
@@ -165,6 +173,8 @@ public class ActionDecision {
         private String key;
         private String contains;
         private Integer waitMs;
+        private String testId;
+        private String selector;
         private String reason;
         private boolean needsRetry = false;
 
@@ -225,6 +235,16 @@ public class ActionDecision {
 
         public Builder waitMs(Integer waitMs) {
             this.waitMs = waitMs;
+            return this;
+        }
+
+        public Builder testId(String testId) {
+            this.testId = testId;
+            return this;
+        }
+
+        public Builder selector(String selector) {
+            this.selector = selector;
             return this;
         }
 

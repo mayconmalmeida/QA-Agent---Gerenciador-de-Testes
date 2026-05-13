@@ -6,6 +6,7 @@ import br.com.qasuite.core.ExecutionEngine.ExecutionStats;
 import br.com.qasuite.core.TestExecutor;
 import br.com.qasuite.domain.TestPlan;
 import br.com.qasuite.domain.StepResult;
+import br.com.qasuite.learning.ExecutionEventClient;
 import com.google.gson.Gson;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
@@ -44,6 +45,9 @@ public class GenericTest extends BaseTest {
         String description = metadata.get("description").getAsString();
         String testType = metadata.has("testType") ? metadata.get("testType").getAsString() : "generic";
         String testName = metadata.has("name") ? metadata.get("name").getAsString() : "Generic Test";
+        String executionId = metadata.has("executionId") && !metadata.get("executionId").isJsonNull()
+            ? metadata.get("executionId").getAsString()
+            : null;
 
         System.out.println("[GenericTest] Tipo de teste: " + testType);
         System.out.println("[GenericTest] Nome: " + testName);
@@ -54,7 +58,7 @@ public class GenericTest extends BaseTest {
             String testData = metadata.get("testData").getAsString();
             if (testData != null && !testData.isEmpty() && !testData.equals("{}")) {
                 System.out.println("[GenericTest] Executando com DSL (TestPlan)");
-                executeWithDSL(testData, testName);
+                executeWithDSL(testData, testName, executionId);
                 return;
             }
         }
@@ -73,8 +77,9 @@ public class GenericTest extends BaseTest {
         System.out.println("[GenericTest] Teste genérico concluído com sucesso!");
     }
 
-    private void executeWithDSL(String testDataJson, String testName) throws Exception {
+    private void executeWithDSL(String testDataJson, String testName, String executionId) throws Exception {
         Gson gson = new Gson();
+        ExecutionEventClient events = new ExecutionEventClient();
 
         // Parse the TestPlan from JSON
         TestPlan testPlan = gson.fromJson(testDataJson, TestPlan.class);
@@ -101,9 +106,21 @@ public class GenericTest extends BaseTest {
                 if (result.getErrorDetails() != null) {
                     System.out.println("[Execution]    Erro: " + result.getErrorDetails());
                 }
+                events.sendStepProgress(
+                    executionId,
+                    result.getStep().getOrder(),
+                    testPlan.getTotalSteps(),
+                    result.getStep().getAction() != null ? result.getStep().getAction().name() : "UNKNOWN",
+                    result.getStep().getDescription(),
+                    result.getStatus().name(),
+                    result.getDurationMs(),
+                    result.getErrorDetails(),
+                    result.getScreenshotPath()
+                );
             })
             .onExecutionStart(plan -> {
                 System.out.println("[Execution] 🚀 Iniciando execução: " + plan.getName());
+                events.sendStart(executionId, plan.getName(), plan.getTotalSteps());
             })
             .onExecutionComplete(results -> {
                 ExecutionStats stats = new ExecutionStats(results);
@@ -112,10 +129,16 @@ public class GenericTest extends BaseTest {
                 System.out.println("[Execution]    Sucesso: " + stats.getSuccess());
                 System.out.println("[Execution]    Falhas: " + stats.getFailed());
                 System.out.println("[Execution]    Taxa: " + String.format("%.1f", stats.getSuccessRate()) + "%");
+                events.sendComplete(executionId, stats.getSuccess(), stats.getFailed(), stats.getTotal());
             });
 
-        // Execute the test
-        List<StepResult> results = engine.execute(testPlan);
+        List<StepResult> results;
+        try {
+            results = engine.execute(testPlan);
+        } catch (Exception e) {
+            events.sendError(executionId, e.getMessage());
+            throw e;
+        }
 
         // Check results
         ExecutionStats stats = engine.getStats();

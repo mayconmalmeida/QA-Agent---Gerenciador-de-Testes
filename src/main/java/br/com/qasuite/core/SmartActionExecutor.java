@@ -111,6 +111,17 @@ public class SmartActionExecutor {
         log("[SmartAction] Duplo-clique em [role=" + role + ", text=" + text + "]");
 
         Locator locator = null;
+
+        Locator bySelector = resolveBySelectorOrTestId(decision);
+        if (bySelector != null) {
+            locator = bySelector;
+            locator.waitFor(new Locator.WaitForOptions()
+                .setState(WaitForSelectorState.VISIBLE)
+                .setTimeout(defaultTimeout));
+            locator.dblclick();
+            log("[SmartAction] Duplo-clique concluído");
+            return;
+        }
         
         // Estratégia 1: por role + texto
         try {
@@ -196,6 +207,16 @@ public class SmartActionExecutor {
             } catch (Exception e) {
                 log("[SmartAction] Menu pai não encontrado ou já expandido: " + e.getMessage());
             }
+        }
+
+        Locator bySelector = resolveBySelectorOrTestId(decision);
+        if (bySelector != null) {
+            bySelector.waitFor(new Locator.WaitForOptions()
+                .setState(WaitForSelectorState.VISIBLE)
+                .setTimeout(defaultTimeout));
+            bySelector.click(new Locator.ClickOptions().setTimeout(defaultTimeout));
+            log("[SmartAction] Clique concluído (selector/testId)");
+            return;
         }
 
         Locator locator = null;
@@ -675,6 +696,23 @@ public class SmartActionExecutor {
 
         log("[SmartAction] Clicando no " + (index + 1) + "º elemento [role=" + role + ", text=" + text + "]");
 
+        Locator bySelector = resolveBySelectorOrTestId(decision);
+        if (bySelector != null) {
+            Locator pick = bySelector;
+            try {
+                if (bySelector.count() > index) {
+                    pick = bySelector.nth(index);
+                }
+            } catch (Exception ignored) {
+            }
+            pick.waitFor(new Locator.WaitForOptions()
+                .setState(WaitForSelectorState.VISIBLE)
+                .setTimeout(defaultTimeout));
+            pick.click();
+            log("[SmartAction] Clique concluído (selector/testId)");
+            return;
+        }
+
         Locator locator = null;
         Exception lastError = null;
 
@@ -777,11 +815,49 @@ public class SmartActionExecutor {
         };
     }
 
+    private Locator resolveBySelectorOrTestId(ActionDecision decision) {
+        if (decision == null) {
+            return null;
+        }
+        try {
+            String selector = decision.getSelector();
+            if (selector != null && !selector.trim().isEmpty()) {
+                Locator loc = page.locator(selector);
+                if (loc.count() > 0) {
+                    return loc.first();
+                }
+            }
+        } catch (Exception ignored) {
+        }
+
+        try {
+            String testId = decision.getTestId();
+            if (testId != null && !testId.trim().isEmpty()) {
+                Locator loc = page.getByTestId(testId.trim());
+                if (loc.count() > 0) {
+                    return loc.first();
+                }
+            }
+        } catch (Exception ignored) {
+        }
+
+        return null;
+    }
+
     private void executeFill(ActionDecision decision) throws Exception {
         String label = decision.getLabel();
         String value = decision.getValue();
 
         log("[SmartAction] Preenchendo campo [label=" + label + "] com valor: " + value);
+
+        Locator bySelector = resolveBySelectorOrTestId(decision);
+        if (bySelector != null) {
+            bySelector.waitFor(new Locator.WaitForOptions().setTimeout(defaultTimeout));
+            bySelector.clear();
+            bySelector.fill(value);
+            log("[SmartAction] Campo preenchido");
+            return;
+        }
 
         // Tenta por label primeiro
         Locator locator = page.getByLabel(label, new Page.GetByLabelOptions().setExact(false));
@@ -811,6 +887,15 @@ public class SmartActionExecutor {
 
         log("[SmartAction] Preenchendo campo [placeholder=" + placeholder + "] com: " + value);
 
+        Locator bySelector = resolveBySelectorOrTestId(decision);
+        if (bySelector != null) {
+            bySelector.waitFor(new Locator.WaitForOptions().setTimeout(defaultTimeout));
+            bySelector.clear();
+            bySelector.fill(value);
+            log("[SmartAction] Campo preenchido");
+            return;
+        }
+
         Locator locator = page.getByPlaceholder(placeholder,
             new Page.GetByPlaceholderOptions().setExact(false));
 
@@ -825,6 +910,18 @@ public class SmartActionExecutor {
         String label = decision.getLabel();
 
         log("[SmartAction] Marcando checkbox [label=" + label + "]");
+
+        Locator bySelector = resolveBySelectorOrTestId(decision);
+        if (bySelector != null) {
+            bySelector.waitFor(new Locator.WaitForOptions().setTimeout(defaultTimeout));
+            try {
+                bySelector.check();
+            } catch (Exception e) {
+                bySelector.click();
+            }
+            log("[SmartAction] Checkbox marcado");
+            return;
+        }
 
         Locator locator = null;
         Exception lastError = null;
@@ -935,6 +1032,13 @@ public class SmartActionExecutor {
         String option = decision.getOption();
 
         log("[SmartAction] Selecionando [label=" + label + ", option=" + option + "]");
+
+        Locator bySelector = resolveBySelectorOrTestId(decision);
+        if (bySelector != null) {
+            bySelector.selectOption(option);
+            log("[SmartAction] Seleção concluída");
+            return;
+        }
 
         page.getByLabel(label).selectOption(option);
 
